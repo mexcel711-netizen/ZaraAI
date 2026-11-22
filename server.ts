@@ -1232,9 +1232,22 @@ async function startServer() {
   app.get('/api/desktop/installer', (req, res) => {
     const osParam = String(req.query.os || 'win').toLowerCase();
     const agentPath = path.resolve(process.cwd(), 'desktop-companion/agent.mjs');
-    const agentSource = fs.existsSync(agentPath)
+    const securityPath = path.resolve(process.cwd(), 'desktop-companion/security.mjs');
+    const agentModuleSource = fs.existsSync(agentPath)
       ? fs.readFileSync(agentPath, 'utf8')
       : 'console.log("ZARA Desktop Companion missing");';
+    const securityModuleSource = fs.existsSync(securityPath)
+      ? fs.readFileSync(securityPath, 'utf8').replace(/^export function /gm, 'function ')
+      : '';
+    // Installers are distributed as one .mjs file, so inline the helper instead
+    // of leaving a relative import that would be missing on the target PC.
+    const bundledAgentSource =
+      securityModuleSource + '\\n' +
+      agentModuleSource.replace(
+        "import { normalizeUsbDriveRoot, resolveSafeHomePath } from './security.mjs';\\n",
+        '',
+      );
+    const agentSource = bundledAgentSource;
 
     if (osParam === 'agent') {
       res.setHeader('Content-Type', 'application/javascript; charset=utf-8');
