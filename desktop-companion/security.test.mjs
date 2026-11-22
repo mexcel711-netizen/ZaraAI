@@ -35,8 +35,9 @@ test('an existing home-folder symlink cannot escape the home directory', () => {
 });
 
 test('USB drive paths must be exact Windows drive roots', () => {
-  assert.equal(normalizeUsbDriveRoot('e:\\\\'), 'E:\\\\');
-  assert.equal(normalizeUsbDriveRoot('E:\\\\folder'), null);
-  assert.equal(normalizeUsbDriveRoot('\\\\server\\share'), null);
+  const slash = String.fromCharCode(92);
+  assert.equal(normalizeUsbDriveRoot(`e:${slash}`), `E:${slash}`);
+  assert.equal(normalizeUsbDriveRoot(`E:${slash}folder`), null);
+  assert.equal(normalizeUsbDriveRoot(`${slash}${slash}server${slash}share`), null);
   assert.equal(normalizeUsbDriveRoot('E:'), null);
 });
