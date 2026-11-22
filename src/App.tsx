@@ -90,6 +90,7 @@ const DEFAULT_CLIENT_CONFIG: AppConfig = {
   ai_provider: 'auto',
   active_mood: 'auto',
   mood_intensity: DEFAULT_MOOD_INTENSITY,
+  emotion_presets_enabled: false,
   active_character_id: 2,
   hands_free_mode: false,
   camera_awareness_enabled: false,

@@ -26,6 +26,7 @@ function makeConfig(overrides: Partial<AppConfig> = {}): AppConfig {
     ai_provider: 'auto',
     active_mood: 'auto',
     mood_intensity: 1,
+    emotion_presets_enabled: false,
     active_character_id: 2,
     hands_free_mode: false,
     camera_awareness_enabled: false,

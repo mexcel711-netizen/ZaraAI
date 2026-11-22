@@ -1,7 +1,8 @@
 import type { TtsEngineMode } from '../types/nova';
 
 export type VoiceGender = 'female' | 'male';
-export type TtsEngineKind = 'gemini-studio' | 'edge-neural';
+export type TtsEngineKind = 'gemini-studio' | 'openai-tts' | 'edge-neural';
+export type OpenAiTtsVoice = 'marin' | 'coral' | 'ash' | 'onyx';
 
 export interface VoiceEngineOption {
   id: TtsEngineMode;
@@ -12,13 +13,19 @@ export interface VoiceEngineOption {
 export const VOICE_ENGINE_OPTIONS: VoiceEngineOption[] = [
   {
     id: 'auto',
-    label: 'Auto (Match Selected Voice — Locked)',
-    description: 'Uses the native engine for your chosen voice and never switches speaker mid-reply.',
+    label: 'Auto (Gemini Studio -> ChatGPT Voice -> Edge Neural)',
+    description:
+      'Automatically selects the highest-realism neural voice available while keeping your speaker gender & style locked.',
   },
   {
     id: 'gemini-studio',
     label: 'Gemini 3.8 Expressive Studio (Ultra-Realistic)',
     description: 'Uses Gemini 3.8 Expressive TTS with breathing nuance & studio warmth (when key active).',
+  },
+  {
+    id: 'openai-tts',
+    label: 'OpenAI ChatGPT Voice (gpt-4o-mini-tts)',
+    description: 'Uses OpenAI expressive neural speech with warm Urdu/English prosody (when key active).',
   },
   {
     id: 'edge-neural',
@@ -169,23 +176,35 @@ export function getVoicePersonaById(voiceName?: string | null): VoicePersonaOpti
 }
 
 /**
- * Resolves the TTS engine deterministically so ZARA never silently changes speakers
- * across refreshes or between local/Cloudflare runs.
+ * Resolves the TTS engine deterministically so ZARA automatically uses the highest-realism
+ * model voice available (Gemini 3.8 Studio -> OpenAI gpt-4o-mini-tts -> Edge Neural HD)
+ * while locking speaker gender across refreshes and deployments.
  */
 export function resolveEffectiveTtsEngine(
-  voiceName?: string | null,
+  _voiceName?: string | null,
   engineMode: TtsEngineMode = 'auto',
-  hasGeminiKey: boolean = false
+  hasGeminiKey: boolean = false,
+  hasOpenAiKey: boolean = false
 ): TtsEngineKind {
   if (engineMode === 'edge-neural') {
     return 'edge-neural';
   }
   if (engineMode === 'gemini-studio') {
-    return hasGeminiKey ? 'gemini-studio' : 'edge-neural';
+    if (hasGeminiKey) return 'gemini-studio';
+    if (hasOpenAiKey) return 'openai-tts';
+    return 'edge-neural';
   }
-  // In 'auto' mode, match the selected voice's own native engine cleanly.
-  if (hasGeminiKey && isGeminiStudioVoiceId(voiceName)) {
+  if (engineMode === 'openai-tts') {
+    if (hasOpenAiKey) return 'openai-tts';
+    if (hasGeminiKey) return 'gemini-studio';
+    return 'edge-neural';
+  }
+  // In 'auto' mode, prefer realistic model voices whenever configured in server env
+  if (hasGeminiKey) {
     return 'gemini-studio';
+  }
+  if (hasOpenAiKey) {
+    return 'openai-tts';
   }
   return 'edge-neural';
 }
@@ -265,6 +284,17 @@ export function resolveGeminiVoiceForSelection(
   const matched = VOICE_PERSONA_OPTIONS.find((v) => v.id === clean);
   if (matched) return matched.geminiPresetVoice;
   return isMaleVoice(clean) ? 'Puck' : 'Zephyr';
+}
+
+export function resolveOpenAiVoiceForSelection(voiceName?: string | null): OpenAiTtsVoice {
+  const clean = (voiceName || '').trim();
+  if (clean === 'Charon' || clean === 'en-US-ChristopherNeural' || clean === 'Fenrir') {
+    return 'onyx';
+  }
+  if (clean === 'Kore' || clean === 'en-US-AriaNeural') {
+    return 'coral';
+  }
+  return isMaleVoice(clean) ? 'ash' : 'marin';
 }
 
 export function getVoicePreviewSample(

@@ -4,9 +4,8 @@ import {
   DEFAULT_MOOD_INTENSITY,
   MAX_MOOD_INTENSITY,
   MIN_MOOD_INTENSITY,
-  computeMoodAnimationParams,
   normalizeMoodIntensity,
-  resolveAvatarMoodKey,
+  resolveEmotionPresetConfig,
 } from '../../lib/emotionAndSpeech';
 import { FEMALE_VOICE_OPTIONS, MALE_VOICE_OPTIONS } from '../../lib/voiceCatalog';
 import { HolographicAvatar } from '../HolographicAvatar';
@@ -81,6 +80,16 @@ const HAIRSTYLE_CARDS: Array<{ id: HairstyleOption; label: string; desc: string 
   { id: 'bob', label: 'Short bob', desc: 'Chin-length, soft waves' },
   { id: 'wavy', label: 'Wavy hair', desc: 'Long, flowing waves' },
   { id: 'straight', label: 'Straight hair', desc: 'Silky, flowing strands' },
+];
+
+const CHARACTER_MOOD_OPTIONS: Array<{ id: MoodMode; label: string }> = [
+  { id: 'auto', label: 'Auto' },
+  { id: 'calm', label: 'Calm' },
+  { id: 'happy', label: 'Happy' },
+  { id: 'empathetic', label: 'Empathetic' },
+  { id: 'love', label: 'Love' },
+  { id: 'sad', label: 'Sad' },
+  { id: 'surprised', label: 'Surprised' },
 ];
 
 export function CharacterView({
@@ -221,8 +230,13 @@ export function CharacterView({
 
   const currentChar = activeCharacter || characters.find((c) => c.is_active) || characters[0];
   const xpIntoLevel = currentChar ? currentChar.xp % 100 : 0;
-  const resolvedActiveMood = resolveAvatarMoodKey(config.active_mood, avatarEmotion);
-  const moodAnimParams = computeMoodAnimationParams(moodIntensity);
+  const presetVisuals = resolveEmotionPresetConfig({
+    activeMood: config.active_mood,
+    emotion: avatarEmotion,
+    moodIntensity,
+    presetsEnabled: config.emotion_presets_enabled,
+  });
+  const resolvedActiveMood = presetVisuals.resolvedMood;
 
   const nick = userNickname.trim() || 'Boss';
   const previewGreeting =
@@ -723,61 +737,142 @@ export function CharacterView({
 
         <div className="rounded-xl border border-slate-800 bg-[#0A101B] p-4">
           <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-            <div className="min-w-0 flex-1">
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <div>
-                  <label htmlFor="char-mood-intensity" className="text-xs font-semibold text-white">
-                    Mood Animation Intensity
-                  </label>
+            <div className="min-w-0 flex-1 space-y-4">
+              {/* Emotion Presets Toggle & Cross-Character Mood Lock */}
+              <div className="flex items-start justify-between gap-3 border-b border-slate-800/80 pb-3.5 sm:items-center">
+                <div className="min-w-0 flex-1">
+                  <span className="text-xs font-semibold text-white">Emotion Presets</span>
                   <p className="mt-0.5 text-[11px] text-slate-400">
-                    Active mood:{' '}
-                    <span className="capitalize text-cyan-300">
-                      {config.active_mood === 'auto'
-                        ? `Auto (${resolvedActiveMood})`
-                        : config.active_mood}
-                    </span>{' '}
-                    · Tunes avatar animation pace and scale.
+                    Dynamically shifts avatar base color and animation speed by mood across all character profiles.
                   </p>
                 </div>
-                <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={config.emotion_presets_enabled}
+                  aria-label="Emotion Presets"
+                  data-testid="emotion-presets-toggle"
+                  onClick={() =>
+                    void onSaveConfig({ emotion_presets_enabled: !config.emotion_presets_enabled })
+                  }
+                  className={`relative mt-0.5 inline-flex h-6 w-11 shrink-0 items-center rounded-full border transition-colors sm:mt-0 ${
+                    config.emotion_presets_enabled
+                      ? 'border-cyan-400 bg-cyan-500/25'
+                      : 'border-slate-700 bg-slate-900'
+                  }`}
+                >
                   <span
-                    data-testid="mood-intensity-readout"
-                    className="font-mono text-xs font-semibold text-cyan-300 tabular-nums"
-                  >
-                    {Math.round(moodIntensity * 100)}%
-                  </span>
-                  {moodIntensity !== DEFAULT_MOOD_INTENSITY && (
-                    <button
-                      type="button"
-                      onClick={() => handleMoodIntensityChange(DEFAULT_MOOD_INTENSITY)}
-                      aria-label="Reset mood intensity to 100%"
-                      className="inline-flex items-center gap-1 rounded-md border border-slate-700 bg-[#111827] px-2 py-1 text-[11px] font-medium text-slate-300 transition-colors hover:border-cyan-500/40 hover:text-white"
+                    className={`inline-block h-4 w-4 transform rounded-full transition-transform ${
+                      config.emotion_presets_enabled ? 'translate-x-5 bg-cyan-300' : 'translate-x-1 bg-slate-400'
+                    }`}
+                  />
+                </button>
+              </div>
+
+              {/* Mood Selector */}
+              <div>
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <span className="text-[11px] font-medium text-slate-300">Selected Mood</span>
+                  {config.emotion_presets_enabled && (
+                    <span
+                      data-testid="emotion-preset-readout"
+                      className="inline-flex items-center gap-1.5 font-mono text-[11px] text-cyan-200 tabular-nums"
                     >
-                      <RotateCcw className="h-3 w-3" />
-                      <span>Reset</span>
-                    </button>
+                      <span
+                        className="inline-block h-2.5 w-2.5 rounded-full border border-white/25"
+                        style={{ backgroundColor: presetVisuals.baseColor }}
+                        aria-hidden="true"
+                      />
+                      <span>
+                        {presetVisuals.resolvedMood} · {presetVisuals.presetSpeedMultiplier.toFixed(2)}x speed
+                      </span>
+                    </span>
                   )}
+                </div>
+                <div
+                  className="mt-2 flex flex-wrap gap-1.5"
+                  role="group"
+                  aria-label="Character mood preset"
+                >
+                  {CHARACTER_MOOD_OPTIONS.map((opt) => {
+                    const selected = config.active_mood === opt.id;
+                    return (
+                      <button
+                        key={opt.id}
+                        type="button"
+                        data-testid={`character-mood-${opt.id}`}
+                        aria-pressed={selected}
+                        onClick={() => void onSaveConfig({ active_mood: opt.id })}
+                        className={`rounded-lg border px-2.5 py-1 text-xs font-medium transition-colors ${
+                          selected
+                            ? 'border-cyan-400/70 bg-cyan-500/15 text-cyan-200'
+                            : 'border-slate-800 bg-[#111827] text-slate-400 hover:border-slate-700 hover:text-white'
+                        }`}
+                      >
+                        {opt.label}
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
 
-              <input
-                id="char-mood-intensity"
-                type="range"
-                min={MIN_MOOD_INTENSITY}
-                max={MAX_MOOD_INTENSITY}
-                step={0.05}
-                value={moodIntensity}
-                onChange={(e) => handleMoodIntensityChange(Number(e.target.value))}
-                className="mt-3 w-full accent-cyan-400"
-              />
+              {/* Mood Animation Intensity Slider */}
+              <div>
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div>
+                    <label htmlFor="char-mood-intensity" className="text-xs font-semibold text-white">
+                      Mood Animation Intensity
+                    </label>
+                    <p className="mt-0.5 text-[11px] text-slate-400">
+                      Active mood:{' '}
+                      <span className="capitalize text-cyan-300">
+                        {config.active_mood === 'auto'
+                          ? `Auto (${resolvedActiveMood})`
+                          : config.active_mood}
+                      </span>{' '}
+                      · Tunes avatar animation pace and scale.
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span
+                      data-testid="mood-intensity-readout"
+                      className="font-mono text-xs font-semibold text-cyan-300 tabular-nums"
+                    >
+                      {Math.round(moodIntensity * 100)}%
+                    </span>
+                    {moodIntensity !== DEFAULT_MOOD_INTENSITY && (
+                      <button
+                        type="button"
+                        onClick={() => handleMoodIntensityChange(DEFAULT_MOOD_INTENSITY)}
+                        aria-label="Reset mood intensity to 100%"
+                        className="inline-flex items-center gap-1 rounded-md border border-slate-700 bg-[#111827] px-2 py-1 text-[11px] font-medium text-slate-300 transition-colors hover:border-cyan-500/40 hover:text-white"
+                      >
+                        <RotateCcw className="h-3 w-3" />
+                        <span>Reset</span>
+                      </button>
+                    )}
+                  </div>
+                </div>
 
-              <div className="mt-1.5 flex items-center justify-between text-[11px] text-slate-400 tabular-nums">
-                <span>50% Gentle</span>
-                <span className="font-mono text-slate-300">
-                  Duration {moodAnimParams.durationScale.toFixed(2)}x · Scale{' '}
-                  {moodAnimParams.canvasScale.toFixed(2)}x
-                </span>
-                <span>200% Intense</span>
+                <input
+                  id="char-mood-intensity"
+                  type="range"
+                  min={MIN_MOOD_INTENSITY}
+                  max={MAX_MOOD_INTENSITY}
+                  step={0.05}
+                  value={moodIntensity}
+                  onChange={(e) => handleMoodIntensityChange(Number(e.target.value))}
+                  className="mt-2.5 w-full accent-cyan-400"
+                />
+
+                <div className="mt-1.5 flex flex-wrap items-center justify-between gap-x-3 gap-y-1 text-[11px] text-slate-400 tabular-nums">
+                  <span className="whitespace-nowrap">50% Gentle</span>
+                  <span className="order-last w-full text-center font-mono text-slate-300 sm:order-none sm:w-auto">
+                    Duration {presetVisuals.durationScale.toFixed(2)}x · Scale{' '}
+                    {presetVisuals.canvasScale.toFixed(2)}x
+                  </span>
+                  <span className="whitespace-nowrap">200% Intense</span>
+                </div>
               </div>
             </div>
 
@@ -787,6 +882,7 @@ export function CharacterView({
                 emotion={avatarEmotion}
                 activeMood={config.active_mood}
                 moodIntensity={moodIntensity}
+                emotionPresetsEnabled={config.emotion_presets_enabled}
                 assistantName={assistantName.trim() || config.assistant_name}
                 hairstyle={hairstyle}
                 heart={heart}

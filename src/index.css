@@ -148,6 +148,7 @@ body {
 
 [data-testid="holographic-avatar"] {
   --avatar-glow-color: #38bdf8;
+  --avatar-base-color: #081426;
   --avatar-mood-intensity: 1;
   --avatar-anim-duration-scale: 1;
   --avatar-mood-scale: 1;
@@ -161,6 +162,19 @@ body {
     border-color 280ms ease,
     box-shadow 280ms ease,
     background 280ms ease;
+}
+
+[data-testid="holographic-avatar"][data-emotion-presets="true"] {
+  border-color: color-mix(in srgb, var(--avatar-glow-color) 40%, transparent);
+  background: radial-gradient(
+    circle at 50% 44%,
+    color-mix(in srgb, var(--avatar-base-color) 92%, var(--avatar-glow-color) 8%) 0%,
+    var(--avatar-base-color) 62%,
+    rgba(4, 8, 16, 0.94) 100%
+  );
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--avatar-glow-color) 20%, transparent),
+    inset 0 0 24px color-mix(in srgb, var(--avatar-glow-color) 14%, transparent);
 }
 
 [data-testid="holographic-avatar"][data-active-mood="happy"],

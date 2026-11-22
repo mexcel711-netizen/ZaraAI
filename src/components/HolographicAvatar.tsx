@@ -1,9 +1,14 @@
 import { useEffect, useRef, type CSSProperties } from 'react';
 import {
+  computeBlinkDurationMs,
+  createBlinkScheduler,
+  getPortraitEyeGeometry,
+  stepBlinkScheduler,
+  type EyeBox,
+} from '../lib/avatarBlink';
+import {
   DEFAULT_MOOD_INTENSITY,
-  computeMoodAnimationParams,
-  resolveAvatarGlowColor,
-  resolveAvatarMoodKey,
+  resolveEmotionPresetConfig,
 } from '../lib/emotionAndSpeech';
 import {
   computeHairAirWisps,
@@ -18,6 +23,7 @@ interface HolographicAvatarProps {
   emotion: FacialEmotion;
   activeMood?: MoodMode;
   moodIntensity?: number;
+  emotionPresetsEnabled?: boolean;
   assistantName: string;
   hairstyle?: HairstyleOption;
   heart?: HeartState;
@@ -45,6 +51,7 @@ export function HolographicAvatar({
   emotion,
   activeMood = 'auto',
   moodIntensity = DEFAULT_MOOD_INTENSITY,
+  emotionPresetsEnabled = false,
   assistantName,
   hairstyle = 'wavy',
   heart,
@@ -56,13 +63,24 @@ export function HolographicAvatar({
   lipWidth = 0,
   deepThinking = false,
 }: HolographicAvatarProps) {
+  const preset = resolveEmotionPresetConfig({
+    activeMood,
+    emotion,
+    moodIntensity,
+    presetsEnabled: emotionPresetsEnabled,
+  });
+
   const shouldShowWaves = showVoiceWaves ?? variant !== 'compact';
   const containerRef = useRef<HTMLDivElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const waveContainerRef = useRef<HTMLDivElement | null>(null);
   const waveBarRefs = useRef<Array<HTMLSpanElement | null>>([]);
   const stateRef = useRef<AvatarState>(state);
-  const emotionRef = useRef<FacialEmotion>(emotion);
+  const emotionRef = useRef<FacialEmotion>(preset.resolvedMood);
+  const presetsEnabledRef = useRef<boolean>(emotionPresetsEnabled);
+  const speedFactorRef = useRef<number>(preset.effectiveSpeedFactor);
+  const moodIntensityRef = useRef<number>(preset.intensity);
+  const baseRgbRef = useRef<[number, number, number]>(preset.baseRgb);
   const hairstyleRef = useRef<HairstyleOption>(hairstyle);
   const heartBpmRef = useRef<number>(heart?.heartbeatBpm ?? 74);
   const showRingRef = useRef<boolean>(showRadarRing);
@@ -75,8 +93,18 @@ export function HolographicAvatar({
   }, [state]);
 
   useEffect(() => {
-    emotionRef.current = emotion;
-  }, [emotion]);
+    emotionRef.current = preset.resolvedMood;
+    presetsEnabledRef.current = emotionPresetsEnabled;
+    speedFactorRef.current = preset.effectiveSpeedFactor;
+    moodIntensityRef.current = preset.intensity;
+    baseRgbRef.current = preset.baseRgb;
+  }, [
+    preset.resolvedMood,
+    emotionPresetsEnabled,
+    preset.effectiveSpeedFactor,
+    preset.intensity,
+    preset.baseRgb,
+  ]);
 
   useEffect(() => {
     heartBpmRef.current = heart?.heartbeatBpm ?? 74;
@@ -162,8 +190,92 @@ export function HolographicAvatar({
     let currentWind = 0.32;
     let lastWindAttr = '';
     let lastWaveActiveAttr = '';
+    let lastBlinkPhaseAttr = '';
+    let lastBlinkDurationAttr = '';
     let lastDrawTime = 0;
     const minFrameMs = variant === 'compact' ? 42 : 28;
+    let blinkState = createBlinkScheduler({
+      nowMs: typeof performance !== 'undefined' ? performance.now() : 0,
+      moodIntensity: moodIntensityRef.current,
+      emotion: emotionRef.current,
+    });
+
+    const drawSingleEyeBlink = (
+      eye: EyeBox,
+      drawX: number,
+      drawY: number,
+      drawSize: number,
+      blinkAmount: number,
+      baseRgb: [number, number, number],
+      lashAccent: string
+    ) => {
+      const ex = drawX + eye.x * drawSize;
+      const ey = drawY + eye.y * drawSize;
+      const rx = eye.rx * drawSize;
+      const ry = eye.ry * drawSize;
+      const lidDrop = Math.min(1, Math.max(0, blinkAmount));
+
+      ctx.save();
+      ctx.translate(ex, ey);
+      ctx.rotate(eye.tilt);
+
+      // Soft orbital eyelid shadow covering the bright glowing sclera from top down
+      ctx.save();
+      ctx.beginPath();
+      ctx.ellipse(0, 0, rx * 1.25, ry * 1.32, 0, 0, Math.PI * 2);
+      ctx.clip();
+
+      const upperY = -ry * 1.25;
+      const lowerEdgeY = -ry * 0.95 + lidDrop * (ry * 2.15);
+      const shadeR = Math.max(4, Math.round(baseRgb[0] * 0.72));
+      const shadeG = Math.max(22, Math.round(baseRgb[1] * 1.15));
+      const shadeB = Math.max(38, Math.round(baseRgb[2] * 1.25));
+
+      const lidGrad = ctx.createLinearGradient(0, upperY, 0, lowerEdgeY + 2);
+      lidGrad.addColorStop(0, `rgba(${shadeR}, ${shadeG}, ${shadeB}, ${(0.78 * lidDrop).toFixed(3)})`);
+      lidGrad.addColorStop(0.68, `rgba(7, 30, 48, ${(0.90 * lidDrop).toFixed(3)})`);
+      lidGrad.addColorStop(1, `rgba(12, 46, 68, ${(0.84 * lidDrop).toFixed(3)})`);
+
+      ctx.globalCompositeOperation = 'source-over';
+      ctx.fillStyle = lidGrad;
+      ctx.beginPath();
+      ctx.moveTo(-rx * 1.35, upperY);
+      ctx.lineTo(rx * 1.35, upperY);
+      ctx.lineTo(rx * 1.35, lowerEdgeY);
+      ctx.quadraticCurveTo(0, lowerEdgeY + ry * (0.28 + 0.32 * lidDrop), -rx * 1.35, lowerEdgeY);
+      ctx.closePath();
+      ctx.fill();
+      ctx.restore();
+
+      // Luminous curved holographic upper lash-line descending cleanly with the eyelid
+      const creaseCtrlY = lowerEdgeY + ry * (0.28 * lidDrop - 0.14 * (1 - lidDrop));
+      ctx.globalCompositeOperation = 'screen';
+      ctx.lineCap = 'round';
+      ctx.strokeStyle = lashAccent;
+      ctx.globalAlpha = 0.25 + lidDrop * 0.55;
+      ctx.lineWidth = Math.max(1.0, drawSize * 0.0052);
+      ctx.beginPath();
+      ctx.moveTo(-rx * 0.95, lowerEdgeY - ry * 0.08);
+      ctx.quadraticCurveTo(0, creaseCtrlY, rx * 0.95, lowerEdgeY - ry * 0.05);
+      ctx.stroke();
+
+      ctx.restore();
+    };
+
+    const drawPortraitBlink = (
+      drawX: number,
+      drawY: number,
+      drawSize: number,
+      styleKey: HairstyleOption,
+      blinkAmount: number,
+      baseRgb: [number, number, number],
+      lashAccent: string
+    ) => {
+      if (blinkAmount <= 0.02) return;
+      const eyes = getPortraitEyeGeometry(styleKey);
+      drawSingleEyeBlink(eyes.left, drawX, drawY, drawSize, blinkAmount, baseRgb, lashAccent);
+      drawSingleEyeBlink(eyes.right, drawX, drawY, drawSize, blinkAmount, baseRgb, lashAccent);
+    };
 
     const drawGlowingHairAir = (
       drawX: number,
@@ -248,7 +360,8 @@ export function HolographicAvatar({
     };
 
     const renderFrame = (now: number = 0) => {
-      if (!prefersReducedMotion && lastDrawTime !== 0 && now - lastDrawTime < minFrameMs) {
+      const frameInterval = blinkState.isBlinking ? 14 : minFrameMs;
+      if (!prefersReducedMotion && lastDrawTime !== 0 && now - lastDrawTime < frameInterval) {
         rafId = requestAnimationFrame(renderFrame);
         return;
       }
@@ -296,18 +409,35 @@ export function HolographicAvatar({
         containerRef.current.dataset.hairWind = windLabel;
       }
 
+      blinkState = stepBlinkScheduler(blinkState, now, {
+        moodIntensity: moodIntensityRef.current,
+        emotion: curEmotion,
+        prefersReducedMotion,
+      });
+      if (containerRef.current) {
+        if (blinkState.phase !== lastBlinkPhaseAttr) {
+          lastBlinkPhaseAttr = blinkState.phase;
+          containerRef.current.dataset.blink = blinkState.phase;
+        }
+        const durLabel = String(blinkState.blinkDurationMs);
+        if (durLabel !== lastBlinkDurationAttr) {
+          lastBlinkDurationAttr = durLabel;
+          containerRef.current.dataset.blinkDurationMs = durLabel;
+        }
+      }
+
+      const curSpeed = Math.max(0.45, Math.min(2.8, speedFactorRef.current || 1));
       const waveSpeed =
-        curState === 'thinking'
+        (curState === 'thinking'
           ? 0.042
           : curState === 'speaking'
             ? 0.036
             : curState === 'listening'
               ? 0.028
-              : 0.018;
+              : 0.018) * curSpeed;
       if (!prefersReducedMotion) {
         phase += waveSpeed;
-        // Hair aura and floating wisps stay at one serene constant pace even while speaking
-        windPhase += 0.026;
+        windPhase += 0.026 * curSpeed;
       }
 
       if (waveContainerRef.current) {
@@ -386,15 +516,27 @@ export function HolographicAvatar({
         ctx.restore();
       }
 
-      // 2. Central radial volumetric glow inside circle (gentle heartbeat radiance outer aura)
-      const beatHz = Math.max(0.8, Math.min(2.2, (heartBpmRef.current || 74) / 60));
+      // 2. Central radial volumetric glow inside circle (honors Emotion Presets base color when active)
+      const [baseR, baseG, baseB] = baseRgbRef.current;
+      if (presetsEnabledRef.current) {
+        const baseFill = ctx.createRadialGradient(cx, cy, width * 0.04, cx, cy, ringRadius - 2);
+        baseFill.addColorStop(0, `rgba(${baseR}, ${baseG}, ${baseB}, 0.85)`);
+        baseFill.addColorStop(0.72, `rgba(${baseR}, ${baseG}, ${baseB}, 0.48)`);
+        baseFill.addColorStop(1, 'rgba(3, 10, 19, 0)');
+        ctx.fillStyle = baseFill;
+        ctx.beginPath();
+        ctx.arc(cx, cy, ringRadius - 2, 0, Math.PI * 2);
+        ctx.fill();
+      }
+
+      const beatHz = Math.max(0.8, Math.min(2.2, ((heartBpmRef.current || 74) / 60) * Math.sqrt(curSpeed)));
       const beatBreath = prefersReducedMotion
         ? 0
         : Math.pow(0.5 + 0.5 * Math.sin((now / 1000) * Math.PI * 2 * beatHz), 2);
       const auraRadius = ringRadius * (0.91 + beatBreath * 0.03);
       const aura = ctx.createRadialGradient(cx, cy - 6, width * 0.06, cx, cy, auraRadius);
       aura.addColorStop(0, palette.glow);
-      aura.addColorStop(0.58, 'rgba(14, 116, 144, 0.10)');
+      aura.addColorStop(0.58, presetsEnabledRef.current ? `rgba(${baseR}, ${baseG}, ${baseB}, 0.28)` : 'rgba(14, 116, 144, 0.10)');
       aura.addColorStop(1, 'rgba(3, 10, 19, 0)');
       ctx.fillStyle = aura;
       ctx.beginPath();
@@ -414,6 +556,15 @@ export function HolographicAvatar({
         ctx.clip();
         ctx.globalCompositeOperation = 'screen';
         ctx.drawImage(offscreen, drawX, drawY, drawSize, drawSize);
+        drawPortraitBlink(
+          drawX,
+          drawY,
+          drawSize,
+          curStyle,
+          blinkState.blinkAmount,
+          baseRgbRef.current,
+          palette.primary
+        );
         drawGlowingHairAir(
           drawX,
           drawY,
@@ -466,24 +617,27 @@ export function HolographicAvatar({
     micLevel > 0.06;
 
   const waveBarTone =
-    state === 'error' || emotion === 'angry'
+    state === 'error' || preset.resolvedMood === 'angry'
       ? 'bg-rose-400 shadow-[0_0_8px_rgba(251,113,133,0.55)]'
-      : emotion === 'love'
+      : preset.resolvedMood === 'love'
         ? 'bg-pink-400 shadow-[0_0_8px_rgba(244,114,182,0.55)]'
-        : state === 'listening'
-          ? 'bg-emerald-300 shadow-[0_0_8px_rgba(52,211,153,0.55)]'
-          : 'bg-cyan-300 shadow-[0_0_8px_rgba(34,211,238,0.55)]';
+        : preset.resolvedMood === 'empathetic'
+          ? 'bg-teal-300 shadow-[0_0_8px_rgba(20,184,166,0.55)]'
+          : preset.resolvedMood === 'sad'
+            ? 'bg-indigo-300 shadow-[0_0_8px_rgba(99,102,241,0.55)]'
+            : state === 'listening'
+              ? 'bg-emerald-300 shadow-[0_0_8px_rgba(52,211,153,0.55)]'
+              : 'bg-cyan-300 shadow-[0_0_8px_rgba(34,211,238,0.55)]';
 
   const activeFocus = state === 'thinking' || deepThinking;
-  const resolvedMood = resolveAvatarMoodKey(activeMood, emotion);
-  const avatarGlowColor = resolveAvatarGlowColor(activeMood, emotion);
-  const moodParams = computeMoodAnimationParams(moodIntensity);
+  const resolvedMood = preset.resolvedMood;
   const avatarStyle = {
-    '--avatar-glow-color': avatarGlowColor,
-    '--avatar-mood-intensity': String(moodParams.intensity),
-    '--avatar-anim-duration-scale': String(moodParams.durationScale),
-    '--avatar-mood-scale': String(moodParams.canvasScale),
-    '--avatar-aura-scale': String(moodParams.auraScale),
+    '--avatar-glow-color': preset.glowColor,
+    '--avatar-base-color': preset.baseColor,
+    '--avatar-mood-intensity': String(preset.intensity),
+    '--avatar-anim-duration-scale': String(preset.durationScale),
+    '--avatar-mood-scale': String(preset.canvasScale),
+    '--avatar-aura-scale': String(preset.auraScale),
   } as CSSProperties;
 
   return (
@@ -497,9 +651,14 @@ export function HolographicAvatar({
       data-emotion={emotion}
       data-active-mood={activeMood}
       data-mood={resolvedMood}
-      data-mood-intensity={moodParams.intensity.toFixed(2)}
+      data-mood-intensity={preset.intensity.toFixed(2)}
+      data-emotion-presets={emotionPresetsEnabled ? 'true' : 'false'}
+      data-base-color={preset.baseColor}
+      data-anim-speed={preset.effectiveSpeedFactor.toFixed(2)}
       data-hairstyle={hairstyle}
       data-hair-wind="0.32"
+      data-blink="open"
+      data-blink-duration-ms={String(computeBlinkDurationMs(preset.intensity, resolvedMood))}
       data-heartbeat-bpm={String(heart?.heartbeatBpm ?? 74)}
       data-feeling={heart?.currentFeeling ?? 'warm'}
     >

@@ -7,6 +7,7 @@ import {
   buildQuickUrduPhoneticScript,
   computeMoodAnimationParams,
   detectEmotionFromText,
+  ensureWavPlayableBase64,
   extractEmotionAndCleanText,
   formatExpressiveSpeechPrompt,
   getHumanEdgeProsody,
@@ -16,6 +17,7 @@ import {
   resolveActiveAiProvider,
   resolveAvatarGlowColor,
   resolveAvatarMoodKey,
+  resolveEmotionPresetConfig,
   splitSpeechChunks,
 } from './emotionAndSpeech';
 
@@ -81,6 +83,25 @@ test('resolveActiveAiProvider prioritizes Cloudflare binding automatically on Cl
     hasGoogleAiKey: true,
   });
   assert.equal(cloudflareOverride.activeProvider, 'cloudflare-rest');
+
+  const openAiFallback = resolveActiveAiProvider({
+    preference: 'auto',
+    hasCloudflareBinding: false,
+    hasCloudflareRest: false,
+    hasGoogleAiKey: false,
+    hasOpenAiKey: true,
+  });
+  assert.equal(openAiFallback.activeProvider, 'openai');
+  assert.equal(openAiFallback.openaiConfigured, true);
+
+  const openAiPreferred = resolveActiveAiProvider({
+    preference: 'openai',
+    hasCloudflareBinding: false,
+    hasCloudflareRest: false,
+    hasGoogleAiKey: true,
+    hasOpenAiKey: true,
+  });
+  assert.equal(openAiPreferred.activeProvider, 'openai');
 });
 
 test('isRomanUrduText identifies Roman Urdu phrases and rejects plain English', () => {
@@ -195,4 +216,54 @@ test('computeMoodAnimationParams scales duration inversely and scales canvas/aur
   assert.equal(intense.durationScale, 0.5);
   assert.equal(intense.canvasScale, 1.08);
   assert.equal(intense.auraScale, 1.16);
+});
+
+test('resolveEmotionPresetConfig adjusts baseColor and animation speed by mood when active, and stays neutral when off', () => {
+  const offPreset = resolveEmotionPresetConfig({
+    activeMood: 'happy',
+    emotion: 'happy',
+    moodIntensity: 1,
+    presetsEnabled: false,
+  });
+  assert.equal(offPreset.baseColor, '#081426');
+  assert.equal(offPreset.presetSpeedMultiplier, 1);
+  assert.equal(offPreset.durationScale, 1);
+
+  const happyPreset = resolveEmotionPresetConfig({
+    activeMood: 'happy',
+    emotion: 'calm',
+    moodIntensity: 1,
+    presetsEnabled: true,
+  });
+  const sadPreset = resolveEmotionPresetConfig({
+    activeMood: 'sad',
+    emotion: 'calm',
+    moodIntensity: 1,
+    presetsEnabled: true,
+  });
+  const lovePreset = resolveEmotionPresetConfig({
+    activeMood: 'love',
+    emotion: 'calm',
+    moodIntensity: 1.5,
+    presetsEnabled: true,
+  });
+
+  assert.equal(happyPreset.glowColor, '#22d3ee');
+  assert.equal(sadPreset.glowColor, '#6366f1');
+  assert.equal(lovePreset.glowColor, '#f43f5e');
+  assert.notEqual(happyPreset.baseColor, sadPreset.baseColor);
+  assert.notEqual(happyPreset.baseColor, lovePreset.baseColor);
+  assert.ok(happyPreset.presetSpeedMultiplier > sadPreset.presetSpeedMultiplier);
+  assert.ok(happyPreset.durationScale < sadPreset.durationScale);
+  assert.ok(lovePreset.effectiveSpeedFactor > 1.5);
+});
+
+test('ensureWavPlayableBase64 wraps raw PCM and honors mimeType rate parameter', () => {
+  const pcmBytes = new Uint8Array(64);
+  const b64 = Buffer.from(pcmBytes).toString('base64');
+  const wrapped = ensureWavPlayableBase64(b64, 'audio/L16;codec=pcm;rate=16000');
+  assert.equal(wrapped.mimeType, 'audio/wav');
+  const wavBuf = Buffer.from(wrapped.audioBase64, 'base64');
+  assert.equal(wavBuf.subarray(0, 4).toString('ascii'), 'RIFF');
+  assert.equal(wavBuf.readUInt32LE(24), 16000);
 });

@@ -328,9 +328,6 @@ async function playBufferWithLipSync(params: {
     const source = ctx.createBufferSource();
     source.buffer = audioBuffer;
     source.playbackRate.value = effectiveSpeed;
-    if ('detune' in source && source.detune) {
-      source.detune.value = resolved.detuneCents;
-    }
 
     // 3-band intimate vocal studio shaping driven by ZARA's emotion & HeartState profile
     const warmthFilter = ctx.createBiquadFilter();
@@ -376,6 +373,21 @@ async function playBufferWithLipSync(params: {
     const playbackStartTime = ctx.currentTime;
     const expectedDuration = Math.max(0.25, audioBuffer.duration / effectiveSpeed);
 
+    // Schedule a subtle, artifact-free pitch contour ONCE across playback instead of mutating per rAF tick
+    if ('detune' in source && source.detune) {
+      const clampGentleCents = (raw: number) => Math.max(-45, Math.min(45, Math.round(raw * 0.45)));
+      const startCents = clampGentleCents(computeSentencePitchCurveCents(profile, 0.05));
+      const midCents = clampGentleCents(computeSentencePitchCurveCents(profile, 0.5));
+      const endCents = clampGentleCents(computeSentencePitchCurveCents(profile, 0.95));
+      source.detune.setValueAtTime(startCents, playbackStartTime);
+      source.detune.linearRampToValueAtTime(midCents, playbackStartTime + expectedDuration * 0.5);
+      source.detune.linearRampToValueAtTime(endCents, playbackStartTime + expectedDuration);
+    }
+
+    // Gentle 12ms fade-in prevents Web Audio onset clicks/pops
+    gainNode.gain.setValueAtTime(Math.min(0.02, effectiveVolume), playbackStartTime);
+    gainNode.gain.linearRampToValueAtTime(effectiveVolume, playbackStartTime + 0.012);
+
     let smoothOpen = 0;
     let smoothWidth = 0;
 
@@ -383,10 +395,6 @@ async function playBufferWithLipSync(params: {
       if (params.signal.aborted || activeSourceNode !== source) {
         params.onLipSync?.(0, 0);
         return;
-      }
-      if ('detune' in source && source.detune) {
-        const progress = Math.min(1, Math.max(0, (ctx.currentTime - playbackStartTime) / expectedDuration));
-        source.detune.value = computeSentencePitchCurveCents(profile, progress);
       }
       analyser.getByteFrequencyData(freqData);
       // Low-mid vocal formant energy (bins 1..14)

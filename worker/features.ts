@@ -74,6 +74,7 @@ const DEFAULT_CONFIG: AppConfig = {
   ai_provider: 'auto',
   active_mood: 'auto',
   mood_intensity: DEFAULT_MOOD_INTENSITY,
+  emotion_presets_enabled: false,
   active_character_id: 2,
   hands_free_mode: false,
   camera_awareness_enabled: false,
@@ -250,6 +251,7 @@ async function readConfig(db: D1Database): Promise<AppConfig> {
     ai_provider: get('ai_provider', 'auto') as AppConfig['ai_provider'],
     active_mood: get('active_mood', 'auto') as MoodMode,
     mood_intensity: normalizeMoodIntensity(values.get('mood_intensity'), DEFAULT_CONFIG.mood_intensity),
+    emotion_presets_enabled: get('emotion_presets_enabled', 'false') === 'true',
     active_character_id: number('active_character_id', 2, 1, 999999),
     hands_free_mode: get('hands_free_mode', 'false') === 'true',
     camera_awareness_enabled: get('camera_awareness_enabled', 'false') === 'true',
@@ -335,14 +337,16 @@ async function saveTurn(
   );
 }
 
+const ALLOWED_CONFIG_KEYS = new Set(Object.keys(DEFAULT_CONFIG));
+
 async function upsertConfig(db: D1Database, partial: Partial<AppConfig>) {
   let syncedVoice: string | null = null;
   for (const [key, value] of Object.entries(partial)) {
-    if (value === undefined) continue;
+    if (!ALLOWED_CONFIG_KEYS.has(key) || value === undefined) continue;
     const normalized =
       key === 'tts_voice'
         ? String(value).trim() || 'ur-PK-UzmaNeural'
-        : key === 'voice_locked'
+        : key === 'voice_locked' || key === 'emotion_presets_enabled'
           ? String(value === true || value === 'true')
           : key === 'tts_engine_mode'
             ? value === 'gemini-studio' || value === 'edge-neural'
@@ -936,7 +940,9 @@ export async function handleFeatureRoute(request: Request, env: FeatureEnv): Pro
         personality: character.personality,
         custom_prompt: character.system_prompt,
         ...(currentCfg.voice_locked ? {} : { tts_voice: character.tts_voice }),
-        active_mood: character.default_mood === 'calm' ? 'auto' : character.default_mood,
+        ...(currentCfg.emotion_presets_enabled
+          ? {}
+          : { active_mood: character.default_mood === 'calm' ? 'auto' : character.default_mood }),
       });
       return json({ character: { ...character, is_active: true }, characters: await getCharacters(db), config: await readConfig(db) });
     }
@@ -948,9 +954,19 @@ export async function handleFeatureRoute(request: Request, env: FeatureEnv): Pro
       const remaining = await getCharacters(db);
       if (Number(result.is_active) === 1 && remaining[0]) {
         const selected = remaining[0];
+        const currentCfg = await readConfig(db);
         await exec(db, 'UPDATE characters SET is_active=0');
         await exec(db, 'UPDATE characters SET is_active=1 WHERE id=?', selected.id);
-        await upsertConfig(db, { active_character_id: selected.id, assistant_name: selected.name, personality: selected.personality, custom_prompt: selected.system_prompt, tts_voice: selected.tts_voice });
+        await upsertConfig(db, {
+          active_character_id: selected.id,
+          assistant_name: selected.name,
+          personality: selected.personality,
+          custom_prompt: selected.system_prompt,
+          ...(currentCfg.voice_locked ? {} : { tts_voice: selected.tts_voice }),
+          ...(currentCfg.emotion_presets_enabled
+            ? {}
+            : { active_mood: selected.default_mood === 'calm' ? 'auto' : selected.default_mood }),
+        });
       }
       return json({ ok: true, characters: await getCharacters(db) });
     }

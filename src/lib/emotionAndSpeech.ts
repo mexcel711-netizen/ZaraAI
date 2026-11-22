@@ -105,6 +105,85 @@ export function computeMoodAnimationParams(intensity?: number): {
   };
 }
 
+export interface EmotionPresetVisuals {
+  resolvedMood: FacialEmotion;
+  glowColor: string;
+  baseColor: string;
+  baseRgb: [number, number, number];
+  presetSpeedMultiplier: number;
+  effectiveSpeedFactor: number;
+  intensity: number;
+  durationScale: number;
+  canvasScale: number;
+  auraScale: number;
+}
+
+const NEUTRAL_STUDIO_BASE_COLOR = '#081426';
+const NEUTRAL_STUDIO_BASE_RGB: [number, number, number] = [8, 20, 38];
+
+const MOOD_PRESET_SPECS: Record<
+  FacialEmotion,
+  { baseColor: string; baseRgb: [number, number, number]; speedMultiplier: number }
+> = {
+  happy: { baseColor: '#062c42', baseRgb: [6, 44, 66], speedMultiplier: 1.32 },
+  excited: { baseColor: '#063047', baseRgb: [6, 48, 71], speedMultiplier: 1.38 },
+  empathetic: { baseColor: '#062d2a', baseRgb: [6, 45, 42], speedMultiplier: 0.92 },
+  love: { baseColor: '#310b22', baseRgb: [49, 11, 34], speedMultiplier: 1.15 },
+  sad: { baseColor: '#121740', baseRgb: [18, 23, 64], speedMultiplier: 0.68 },
+  surprised: { baseColor: '#082747', baseRgb: [8, 39, 71], speedMultiplier: 1.4 },
+  curious: { baseColor: '#082644', baseRgb: [8, 38, 68], speedMultiplier: 1.24 },
+  angry: { baseColor: '#300b18', baseRgb: [48, 11, 24], speedMultiplier: 1.26 },
+  thoughtful: { baseColor: '#0c1c36', baseRgb: [12, 28, 54], speedMultiplier: 0.85 },
+  confident: { baseColor: '#08233a', baseRgb: [8, 35, 58], speedMultiplier: 1.05 },
+  calm: { baseColor: '#081b2e', baseRgb: [8, 27, 46], speedMultiplier: 0.86 },
+};
+
+/**
+ * Computes consistent base color, glow color, and animation speed/duration scaling
+ * across character profiles when 'Emotion Presets' is active.
+ */
+export function resolveEmotionPresetConfig(params: {
+  activeMood?: MoodMode;
+  emotion?: FacialEmotion;
+  moodIntensity?: number;
+  presetsEnabled?: boolean;
+}): EmotionPresetVisuals {
+  const resolvedMood = resolveAvatarMoodKey(params.activeMood, params.emotion ?? 'calm');
+  const glowColor = resolveAvatarGlowColor(params.activeMood, params.emotion ?? 'calm');
+  const baseParams = computeMoodAnimationParams(params.moodIntensity);
+  const presetsEnabled = Boolean(params.presetsEnabled);
+
+  if (!presetsEnabled) {
+    return {
+      resolvedMood,
+      glowColor,
+      baseColor: NEUTRAL_STUDIO_BASE_COLOR,
+      baseRgb: NEUTRAL_STUDIO_BASE_RGB,
+      presetSpeedMultiplier: 1,
+      effectiveSpeedFactor: baseParams.intensity,
+      ...baseParams,
+    };
+  }
+
+  const spec = MOOD_PRESET_SPECS[resolvedMood] ?? MOOD_PRESET_SPECS.calm;
+  const effectiveSpeedFactor =
+    Math.round(baseParams.intensity * spec.speedMultiplier * 1000) / 1000;
+  const durationScale = Math.round((1 / effectiveSpeedFactor) * 1000) / 1000;
+
+  return {
+    resolvedMood,
+    glowColor,
+    baseColor: spec.baseColor,
+    baseRgb: spec.baseRgb,
+    presetSpeedMultiplier: spec.speedMultiplier,
+    effectiveSpeedFactor,
+    intensity: baseParams.intensity,
+    durationScale,
+    canvasScale: baseParams.canvasScale,
+    auraScale: baseParams.auraScale,
+  };
+}
+
 export function detectEmotionFromText(text: string): FacialEmotion {
   const lower = text.toLowerCase();
   const rules: Array<{ emotion: FacialEmotion; patterns: RegExp[] }> = [
@@ -721,7 +800,7 @@ export function buildGeminiTtsAttempts(params: {
 export function ensureWavPlayableBase64(
   base64Data: string,
   mimeType = 'audio/wav',
-  sampleRate = 24000
+  sampleRate?: number
 ): { audioBase64: string; mimeType: string } {
   const clean = base64Data.replace(/^data:[^;]+;base64,/i, '').replace(/\s+/g, '');
   if (!clean) return { audioBase64: clean, mimeType };
@@ -739,10 +818,19 @@ export function ensureWavPlayableBase64(
     return { audioBase64: clean, mimeType: 'audio/mpeg' };
   }
 
+  const parsedRateMatch = mimeType.match(/(?:rate|samplerate)\s*=\s*(\d{4,6})/i);
+  const parsedRate = parsedRateMatch ? Number(parsedRateMatch[1]) : NaN;
+  const resolvedSampleRate =
+    typeof sampleRate === 'number' && Number.isFinite(sampleRate) && sampleRate >= 8000
+      ? sampleRate
+      : Number.isFinite(parsedRate) && parsedRate >= 8000
+        ? parsedRate
+        : 24000;
+
   // Raw PCM -> wrap with 44-byte WAV header (mono, 16-bit little-endian)
   const numChannels = 1;
   const bitsPerSample = 16;
-  const byteRate = (sampleRate * numChannels * bitsPerSample) / 8;
+  const byteRate = (resolvedSampleRate * numChannels * bitsPerSample) / 8;
   const blockAlign = (numChannels * bitsPerSample) / 8;
   const dataSize = bytes.length;
   const wavBytes = new Uint8Array(44 + dataSize);
@@ -755,7 +843,7 @@ export function ensureWavPlayableBase64(
   view.setUint32(16, 16, true); // PCM chunk size
   view.setUint16(20, 1, true); // PCM format
   view.setUint16(22, numChannels, true);
-  view.setUint32(24, sampleRate, true);
+  view.setUint32(24, resolvedSampleRate, true);
   view.setUint32(28, byteRate, true);
   view.setUint16(32, blockAlign, true);
   view.setUint16(34, bitsPerSample, true);
@@ -808,8 +896,15 @@ export function resolveActiveAiProvider(params: {
   hasCloudflareBinding: boolean;
   hasCloudflareRest: boolean;
   hasGoogleAiKey: boolean;
+  hasOpenAiKey?: boolean;
 }): ProviderStatus {
-  const { preference, hasCloudflareBinding, hasCloudflareRest, hasGoogleAiKey } = params;
+  const {
+    preference,
+    hasCloudflareBinding,
+    hasCloudflareRest,
+    hasGoogleAiKey,
+    hasOpenAiKey = false,
+  } = params;
   const cloudflareConfigured = hasCloudflareBinding || hasCloudflareRest;
 
   let activeProvider: ProviderStatus['activeProvider'] = 'unconfigured';
@@ -818,19 +913,28 @@ export function resolveActiveAiProvider(params: {
     if (hasCloudflareBinding) activeProvider = 'cloudflare-binding';
     else if (hasCloudflareRest) activeProvider = 'cloudflare-rest';
     else if (hasGoogleAiKey) activeProvider = 'google-ai-studio';
+    else if (hasOpenAiKey) activeProvider = 'openai';
+  } else if (preference === 'openai') {
+    if (hasOpenAiKey) activeProvider = 'openai';
+    else if (hasGoogleAiKey) activeProvider = 'google-ai-studio';
+    else if (hasCloudflareBinding) activeProvider = 'cloudflare-binding';
+    else if (hasCloudflareRest) activeProvider = 'cloudflare-rest';
   } else if (preference === 'google-ai-studio') {
     if (hasGoogleAiKey) activeProvider = 'google-ai-studio';
+    else if (hasOpenAiKey) activeProvider = 'openai';
     else if (hasCloudflareBinding) activeProvider = 'cloudflare-binding';
     else if (hasCloudflareRest) activeProvider = 'cloudflare-rest';
   } else {
     if (hasCloudflareBinding) activeProvider = 'cloudflare-binding';
     else if (hasGoogleAiKey) activeProvider = 'google-ai-studio';
+    else if (hasOpenAiKey) activeProvider = 'openai';
     else if (hasCloudflareRest) activeProvider = 'cloudflare-rest';
   }
 
   return {
     activeProvider,
     googleAiConfigured: hasGoogleAiKey,
+    openaiConfigured: hasOpenAiKey,
     cloudflareConfigured,
     cloudflareBindingActive: hasCloudflareBinding,
   };

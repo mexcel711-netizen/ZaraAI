@@ -12,6 +12,7 @@ const migrations = [
   'migrations/0006_voice_history_volume.sql',
   'migrations/0007_voice_activity_sensitivity.sql',
   'migrations/0008_heart_brain_voice_lock.sql',
+  'migrations/0009_emotion_presets.sql',
 ];
 try {
   for (const file of migrations) db.exec(readFileSync(file, 'utf8'));
@@ -76,6 +77,10 @@ try {
   assert.equal(
     db.query("SELECT value FROM app_config WHERE key='tts_engine_mode'").get().value,
     'auto',
+  );
+  assert.equal(
+    db.query("SELECT value FROM app_config WHERE key='emotion_presets_enabled'").get().value,
+    'false',
   );
   assert.ok(JSON.parse(db.query("SELECT value FROM app_config WHERE key='heart_state'").get().value).heartbeatBpm >= 60);
   assert.ok(JSON.parse(db.query("SELECT value FROM app_config WHERE key='brain_state'").get().value).focusTopic);

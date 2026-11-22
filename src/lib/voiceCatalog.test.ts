@@ -12,6 +12,7 @@ import {
   resolveEdgeVoiceForSelection,
   resolveEffectiveTtsEngine,
   resolveGeminiVoiceForSelection,
+  resolveOpenAiVoiceForSelection,
 } from './voiceCatalog';
 
 test('voice catalog provides both female and male realistic neural options', () => {
@@ -25,7 +26,7 @@ test('voice catalog provides both female and male realistic neural options', () 
     MALE_VOICE_OPTIONS.some((v) => v.id === 'en-US-AndrewNeural'),
     false
   );
-  assert.equal(VOICE_ENGINE_OPTIONS.length, 3);
+  assert.equal(VOICE_ENGINE_OPTIONS.length, 4);
 });
 
 test('getVoiceGender and isMaleVoice classify female and male voices accurately', () => {
@@ -62,17 +63,27 @@ test('resolveGeminiVoiceForSelection maps Edge neural choices to matching Gemini
   assert.equal(resolveGeminiVoiceForSelection('Fenrir'), 'Fenrir');
 });
 
-test('resolveEffectiveTtsEngine keeps selected speakers stable across requests', () => {
+test('resolveEffectiveTtsEngine prioritizes Gemini Studio -> OpenAI -> Edge Neural while keeping speaker gender locked', () => {
   assert.equal(isGeminiStudioVoiceId('Zephyr'), true);
   assert.equal(isGeminiStudioVoiceId('ur-PK-UzmaNeural'), false);
-  // Auto respects native engine of selected voice when Gemini key exists
-  assert.equal(resolveEffectiveTtsEngine('Zephyr', 'auto', true), 'gemini-studio');
-  assert.equal(resolveEffectiveTtsEngine('ur-PK-UzmaNeural', 'auto', true), 'edge-neural');
+  // Auto uses realistic model voice whenever API key is configured
+  assert.equal(resolveEffectiveTtsEngine('Zephyr', 'auto', true, false), 'gemini-studio');
+  assert.equal(resolveEffectiveTtsEngine('ur-PK-UzmaNeural', 'auto', true, false), 'gemini-studio');
+  assert.equal(resolveEffectiveTtsEngine('ur-PK-UzmaNeural', 'auto', false, true), 'openai-tts');
+  assert.equal(resolveEffectiveTtsEngine('ur-PK-UzmaNeural', 'auto', false, false), 'edge-neural');
   // Explicit mode overrides predictably
-  assert.equal(resolveEffectiveTtsEngine('ur-PK-UzmaNeural', 'gemini-studio', true), 'gemini-studio');
-  assert.equal(resolveEffectiveTtsEngine('Zephyr', 'edge-neural', true), 'edge-neural');
-  // Falls back cleanly when no key is available
-  assert.equal(resolveEffectiveTtsEngine('Zephyr', 'gemini-studio', false), 'edge-neural');
+  assert.equal(resolveEffectiveTtsEngine('ur-PK-UzmaNeural', 'gemini-studio', true, true), 'gemini-studio');
+  assert.equal(resolveEffectiveTtsEngine('ur-PK-UzmaNeural', 'openai-tts', true, true), 'openai-tts');
+  assert.equal(resolveEffectiveTtsEngine('Zephyr', 'edge-neural', true, true), 'edge-neural');
+  // Falls back cleanly when requested key is absent
+  assert.equal(resolveEffectiveTtsEngine('Zephyr', 'gemini-studio', false, true), 'openai-tts');
+  assert.equal(resolveEffectiveTtsEngine('Zephyr', 'gemini-studio', false, false), 'edge-neural');
+
+  // OpenAI voice persona mapping respects female vs male timbre
+  assert.equal(resolveOpenAiVoiceForSelection('ur-PK-UzmaNeural'), 'marin');
+  assert.equal(resolveOpenAiVoiceForSelection('Kore'), 'coral');
+  assert.equal(resolveOpenAiVoiceForSelection('ur-PK-AsadNeural'), 'ash');
+  assert.equal(resolveOpenAiVoiceForSelection('Charon'), 'onyx');
 });
 
 test('getVoicePreviewSample adapts grammar and language to selected female or male voice', () => {

@@ -3,7 +3,7 @@ import {
   EDGE_TTS_TRUSTED_CLIENT_TOKEN,
   generateSecMsGec,
 } from '../src/lib/edgeTtsSecurity';
-import { getHumanEdgeProsody } from '../src/lib/emotionAndSpeech';
+import { buildNaturalPacedSsmlText, getHumanEdgeProsody } from '../src/lib/emotionAndSpeech';
 import type { FacialEmotion } from '../src/types/nova';
 
 export const NOVA_VOICE = 'ur-PK-UzmaNeural';
@@ -66,7 +66,7 @@ function ssmlMessage(
 ): string {
   const safeText = text.replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F-\u009F]/g, ' ');
   const { rate, pitch } = getHumanEdgeProsody(emotion);
-  const escapedText = escapeXml(safeText);
+  const escapedText = buildNaturalPacedSsmlText(escapeXml(safeText));
   const resolvedVoice = voiceName.trim() || NOVA_VOICE;
   const xmlLang = resolvedVoice.startsWith('en-') ? 'en-US' : 'ur-PK';
   return [

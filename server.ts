@@ -61,6 +61,7 @@ import {
   stripAndExtractAiActions,
   transcribeNovaAudio,
 } from './server/gemini';
+import { generateOpenAiReply, hasOpenAiKey } from './server/openai';
 import { computeEvolutionProgress } from './src/lib/characterEngine';
 import {
   detectEmotionFromText,
@@ -151,6 +152,7 @@ function getProviderStatus(): ProviderStatus {
     hasCloudflareBinding: false,
     hasCloudflareRest: hasCfRest,
     hasGoogleAiKey: hasGoogleAiKey(),
+    hasOpenAiKey: hasOpenAiKey(),
   });
 }
 
@@ -167,7 +169,7 @@ function buildLocalStructuredStudy(params: {
   const headings = cleanLines.filter((l) => /^#{1,3}\s+/.test(l) || /^[A-Z0-9][^.!?]{4,60}:$/.test(l)).slice(0, 5);
   const keySnippets = cleanLines.slice(0, 6).join(' ');
   const summaryParts = [
-    `Local Structured Study Outline (Configure GEMINI_API_KEY in Secrets for deep AI commentary):`,
+    `Local Structured Study Outline:`,
     `• Source (${params.kind.toUpperCase()}): ${params.title}`,
     params.goal ? `• Your Goal: ${params.goal}` : '',
     headings.length > 0 ? `• Detected Sections: ${headings.join(' | ')}` : '',
@@ -660,6 +662,55 @@ async function startServer() {
           replyEmotion = localReply.emotion;
           modelUsed = 'local-companion-brain';
           warning = cfErr instanceof Error ? cfErr.message : 'Cloudflare AI unavailable';
+        }
+      } else if (providerStatus.activeProvider === 'openai') {
+        try {
+          const systemInstruction = buildSystemInstruction({
+            config,
+            memories,
+            notes,
+            reminders,
+            activeCharacter: updatedChar || activeCharacter,
+            knowledge,
+            soulMarkdown: readSoulMarkdown(),
+            userMessage: effectiveMessage,
+            totalUserInteractions: totalUserTurns,
+            heart: nextHeart,
+            brain: nextBrain,
+          });
+          const openAiResult = await generateOpenAiReply({
+            userMessage: effectiveMessage,
+            history,
+            systemInstruction,
+            useDeepThinking: shouldThink,
+            nickname: config.user_nickname || config.user_name || 'Boss',
+          });
+          const actParsed = stripAndExtractAiActions(openAiResult.text);
+          replyText = actParsed.text;
+          aiNotes = actParsed.aiNotes;
+          aiReminders = actParsed.aiReminders;
+          replyEmotion = openAiResult.emotion;
+          modelUsed = openAiResult.modelUsed;
+          thinkingUsed = openAiResult.thinkingUsed;
+          aiMemories = openAiResult.aiMemories;
+          aiReflections = openAiResult.aiReflections;
+        } catch (oaErr) {
+          const localReply = buildLocalConversationalReply({
+            userMessage: effectiveMessage,
+            config,
+            activeCharacter: updatedChar || activeCharacter,
+            memories,
+            notes,
+            reminders,
+            knowledge,
+            extractedMemoriesCount: extracted.length,
+            heart: nextHeart,
+            brain: nextBrain,
+          });
+          replyText = localReply.reply;
+          replyEmotion = localReply.emotion;
+          modelUsed = 'local-companion-brain';
+          warning = oaErr instanceof Error ? oaErr.message : 'OpenAI temporarily unavailable';
         }
       } else {
         try {
@@ -1184,8 +1235,8 @@ async function startServer() {
       const config = getConfig();
       if (!hasGoogleAiKey()) {
         const localMsg = gestureHint
-          ? `لوکل کیمرہ سینسر نے "${gestureHint}" اشارہ/حرکت محسوس کی ہے۔ مکمل بصری تجزیے (Vision) کے لیے Settings > Secrets میں GEMINI_API_KEY شامل کریں۔`
-          : 'Camera frame captured cleanly. Add GEMINI_API_KEY in Secrets to enable full multimodal AI visual recognition.';
+          ? `لوکل کیمرہ سینسر نے "${gestureHint}" اشارہ/حرکت محسوس کی ہے۔`
+          : 'Camera frame captured cleanly in local sensor mode.';
         res.json({
           reply: localMsg,
           emotion: 'curious' as FacialEmotion,

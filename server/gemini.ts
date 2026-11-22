@@ -1,5 +1,6 @@
 import { GoogleGenAI, ThinkingLevel } from '@google/genai';
 import { synthesizeEdgeSpeech } from './edgeTts';
+import { hasOpenAiKey, synthesizeOpenAiSpeech, transcribeWithOpenAi } from './openai';
 import { readSoulMarkdown } from './soulMemory';
 import {
   GEMINI_API_VERSION,
@@ -53,15 +54,13 @@ import type {
 
 export function hasGoogleAiKey(): boolean {
   const apiKey = process.env.GEMINI_API_KEY?.trim();
-  return Boolean(apiKey && apiKey !== 'MY_GEMINI_API_KEY');
+  return Boolean(apiKey && !/^(MY_GEMINI_API_KEY|your_api_key_here|placeholder)$/i.test(apiKey));
 }
 
 function getAiClient(): GoogleGenAI {
   const apiKey = process.env.GEMINI_API_KEY?.trim();
-  if (!apiKey || apiKey === 'MY_GEMINI_API_KEY') {
-    throw new Error(
-      'Google AI Studio API key is not configured. Add GEMINI_API_KEY in Settings > Secrets.'
-    );
+  if (!apiKey || /^(MY_GEMINI_API_KEY|your_api_key_here|placeholder)$/i.test(apiKey)) {
+    throw new Error('Google AI Studio API key is not configured in the server environment.');
   }
   return new GoogleGenAI({
     apiKey,
@@ -808,6 +807,8 @@ async function synthesizeWithGeminiExpressiveTts(params: {
   }
 
   if (lastError) {
+    const msg = lastError instanceof Error ? lastError.message : String(lastError);
+    console.warn(`[ZARA voice] Gemini TTS attempts exhausted (${geminiVoice}):`, msg);
     throw lastError;
   }
   return null;
@@ -821,7 +822,7 @@ export async function generateNovaSpeech(params: {
   ttsEngineMode?: TtsEngineMode;
 }): Promise<{
   audioChunks: Array<{ audioBase64: string; mimeType: string }>;
-  engine: GeminiTtsModelName | 'edge-neural-v2';
+  engine: GeminiTtsModelName | 'openai-tts' | 'edge-neural-v2';
   voice: string;
 }> {
   const cleanText = prepareTextForNaturalSpeech(params.text);
@@ -830,6 +831,7 @@ export async function generateNovaSpeech(params: {
   }
 
   const ai = hasGoogleAiKey() ? getAiClient() : null;
+  const openAiActive = hasOpenAiKey();
   const gender = getVoiceGender(params.voiceName);
   const containsUrdu = /[\u0600-\u06FF]/.test(cleanText);
   const romanUrdu = isRomanUrduText(cleanText);
@@ -845,13 +847,15 @@ export async function generateNovaSpeech(params: {
   const effectiveEngine = resolveEffectiveTtsEngine(
     params.voiceName,
     params.ttsEngineMode || 'auto',
-    Boolean(ai)
+    Boolean(ai),
+    openAiActive
   );
 
   // Pin every sentence chunk to the EXACT same Gemini Studio voice so replies never flip speakers mid-stream.
   if (effectiveEngine === 'gemini-studio' && ai) {
     try {
-      const sentenceChunks = splitSpeechChunks(speechText, 240);
+      const sentenceChunks =
+        speechText.length <= 480 ? [speechText] : splitSpeechChunks(speechText, 240);
       const studioChunks: Array<{ audioBase64: string; mimeType: string }> = [];
       let pinnedModel: GeminiTtsModelName = 'gemini-3.8-flash-tts';
       let pinnedVoice: string = resolveGeminiVoiceForSelection(params.voiceName);
@@ -881,7 +885,32 @@ export async function generateNovaSpeech(params: {
       }
     } catch (error) {
       const msg = error instanceof Error ? error.message : String(error);
-      console.warn('[ZARA voice] Expressive Gemini TTS fallback to Edge Neural:', msg);
+      console.warn('[ZARA voice] Expressive Gemini TTS fallback:', msg);
+    }
+  }
+
+  // OpenAI ChatGPT Expressive Voice (when selected directly, or auto-selected when OPENAI_API_KEY is active)
+  if ((effectiveEngine === 'openai-tts' || effectiveEngine === 'gemini-studio') && openAiActive) {
+    try {
+      const openAiResult = await synthesizeOpenAiSpeech({
+        text: speechText.slice(0, 4000),
+        voiceName: params.voiceName,
+        emotion: params.emotion,
+        language: effectiveLang,
+      });
+      return {
+        audioChunks: [
+          {
+            audioBase64: openAiResult.audioBase64,
+            mimeType: openAiResult.mimeType,
+          },
+        ],
+        engine: 'openai-tts',
+        voice: openAiResult.voice,
+      };
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error);
+      console.warn('[ZARA voice] OpenAI TTS fallback to Edge Neural:', msg);
     }
   }
 
@@ -1007,6 +1036,9 @@ export async function transcribeNovaAudio(params: {
   audioBase64: string;
   mimeType: string;
 }): Promise<string> {
+  if (!hasGoogleAiKey() && hasOpenAiKey()) {
+    return transcribeWithOpenAi(params);
+  }
   const ai = getAiClient();
   const response = await ai.models.generateContent({
     model: 'gemini-3.5-transcribe',

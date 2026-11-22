@@ -286,7 +286,12 @@ export function SettingsView({
                 <span aria-hidden="true">·</span>
                 <span>
                   Google AI Studio:{' '}
-                  {providerStatus.googleAiConfigured ? 'Connected' : 'Configure in Secrets'}
+                  {providerStatus.googleAiConfigured ? 'Connected' : 'Pending Server Env'}
+                </span>
+                <span aria-hidden="true">·</span>
+                <span>
+                  OpenAI (ChatGPT Voice):{' '}
+                  {providerStatus.openaiConfigured ? 'Connected' : 'Pending Server Env'}
                 </span>
                 <span aria-hidden="true">·</span>
                 <span>
@@ -319,9 +324,10 @@ export function SettingsView({
                 className="mt-1.5 w-full rounded-lg border border-slate-800 bg-[#111827] px-3.5 py-2.5 text-sm text-white focus:border-cyan-500/60 focus:outline-none"
               >
                 <option value="auto">
-                  Auto — Cloudflare Workers AI Binding on deploy, Google AI Studio locally
+                  Auto — Cloudflare Workers AI Binding on deploy, Google AI Studio / OpenAI locally
                 </option>
                 <option value="google-ai-studio">Google AI Studio (Gemini 4)</option>
+                <option value="openai">OpenAI (ChatGPT &amp; Expressive Voice)</option>
                 <option value="cloudflare">Cloudflare Workers AI</option>
               </select>
             </div>

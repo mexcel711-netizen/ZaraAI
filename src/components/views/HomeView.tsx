@@ -291,7 +291,7 @@ export function HomeView({
         ? 'Cloudflare Workers AI'
         : providerStatus.activeProvider === 'google-ai-studio'
           ? 'Google AI Studio'
-          : 'Skill Mode (Set AI Key)';
+          : 'Local Companion Mode';
 
   const activeSkillsCount = skills.filter((s) => s.is_enabled).length;
   const pendingRemindersCount = reminders.filter((r) => !r.is_done).length;
@@ -760,6 +760,7 @@ export function HomeView({
                 emotion={avatarEmotion}
                 activeMood={config.active_mood}
                 moodIntensity={config.mood_intensity}
+                emotionPresetsEnabled={config.emotion_presets_enabled}
                 assistantName={config.assistant_name}
                 hairstyle={config.hairstyle}
                 heart={heart}

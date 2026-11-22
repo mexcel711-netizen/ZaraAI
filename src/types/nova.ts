@@ -27,7 +27,7 @@ export type LanguageCode = 'bilingual' | 'en' | 'ur';
 
 export type ResponseStyle = 'friendly_professional' | 'concise_technical' | 'warm_urdu_companion';
 
-export type AiProviderPreference = 'auto' | 'google-ai-studio' | 'cloudflare';
+export type AiProviderPreference = 'auto' | 'google-ai-studio' | 'openai' | 'cloudflare';
 
 export interface ChatMessage {
   id: string;
@@ -160,7 +160,7 @@ export interface SessionSummary {
 
 export type HairstyleOption = 'bob' | 'wavy' | 'straight';
 
-export type TtsEngineMode = 'auto' | 'gemini-studio' | 'edge-neural';
+export type TtsEngineMode = 'auto' | 'gemini-studio' | 'openai-tts' | 'edge-neural';
 
 export interface HeartState {
   warmth: number;
@@ -218,6 +218,7 @@ export interface AppConfig {
   ai_provider: AiProviderPreference;
   active_mood: MoodMode;
   mood_intensity: number;
+  emotion_presets_enabled: boolean;
   active_character_id: number;
   hands_free_mode: boolean;
   camera_awareness_enabled: boolean;
@@ -322,8 +323,14 @@ export interface ChatApiResponse {
 }
 
 export interface ProviderStatus {
-  activeProvider: 'cloudflare-binding' | 'cloudflare-rest' | 'google-ai-studio' | 'unconfigured';
+  activeProvider:
+    | 'cloudflare-binding'
+    | 'cloudflare-rest'
+    | 'google-ai-studio'
+    | 'openai'
+    | 'unconfigured';
   googleAiConfigured: boolean;
+  openaiConfigured?: boolean;
   cloudflareConfigured: boolean;
   cloudflareBindingActive: boolean;
 }

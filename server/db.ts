@@ -194,6 +194,7 @@ export const DEFAULT_CONFIG: AppConfig = {
   ai_provider: 'auto',
   active_mood: 'auto',
   mood_intensity: DEFAULT_MOOD_INTENSITY,
+  emotion_presets_enabled: false,
   active_character_id: 2,
   hands_free_mode: false,
   camera_awareness_enabled: false,
@@ -509,7 +510,9 @@ export function getConfig(): AppConfig {
 
   const rawEngineMode = map.get('tts_engine_mode');
   const tts_engine_mode: TtsEngineMode =
-    rawEngineMode === 'gemini-studio' || rawEngineMode === 'edge-neural'
+    rawEngineMode === 'gemini-studio' ||
+    rawEngineMode === 'openai-tts' ||
+    rawEngineMode === 'edge-neural'
       ? rawEngineMode
       : 'auto';
 
@@ -550,6 +553,7 @@ export function getConfig(): AppConfig {
       map.get('mood_intensity'),
       DEFAULT_CONFIG.mood_intensity
     ),
+    emotion_presets_enabled: map.get('emotion_presets_enabled') === 'true',
     active_character_id:
       Number.isFinite(parsedCharId) && parsedCharId > 0 ? parsedCharId : DEFAULT_CONFIG.active_character_id,
     hands_free_mode: map.get('hands_free_mode') === 'true',
@@ -567,6 +571,8 @@ export function getConfig(): AppConfig {
   };
 }
 
+const ALLOWED_CONFIG_KEYS = new Set(Object.keys(DEFAULT_CONFIG));
+
 export function updateConfig(partial: Partial<AppConfig>): AppConfig {
   const stmt = db.prepare(`
     INSERT INTO app_config (key, value, updated_at)
@@ -575,24 +581,23 @@ export function updateConfig(partial: Partial<AppConfig>): AppConfig {
   `);
   let syncedVoice: string | null = null;
   for (const [k, v] of Object.entries(partial)) {
-    if (v !== undefined) {
-      const normalized =
-        k === 'tts_voice'
-          ? String(v).trim() || DEFAULT_CONFIG.tts_voice
-          : k === 'voice_locked'
-            ? String(v === true || v === 'true')
-            : k === 'tts_engine_mode'
-              ? v === 'gemini-studio' || v === 'edge-neural'
-                ? v
-                : 'auto'
-              : k === 'voice_activity_threshold'
-                ? String(normalizeVoiceActivityThreshold(v))
-                : k === 'mood_intensity'
-                  ? String(normalizeMoodIntensity(v))
-                  : String(v);
-      stmt.run(k, normalized);
-      if (k === 'tts_voice') syncedVoice = normalized;
-    }
+    if (!ALLOWED_CONFIG_KEYS.has(k) || v === undefined) continue;
+    const normalized =
+      k === 'tts_voice'
+        ? String(v).trim() || DEFAULT_CONFIG.tts_voice
+        : k === 'voice_locked' || k === 'emotion_presets_enabled'
+          ? String(v === true || v === 'true')
+          : k === 'tts_engine_mode'
+            ? v === 'gemini-studio' || v === 'openai-tts' || v === 'edge-neural'
+              ? v
+              : 'auto'
+            : k === 'voice_activity_threshold'
+              ? String(normalizeVoiceActivityThreshold(v))
+              : k === 'mood_intensity'
+                ? String(normalizeMoodIntensity(v))
+                : String(v);
+    stmt.run(k, normalized);
+    if (k === 'tts_voice') syncedVoice = normalized;
   }
   if (syncedVoice) {
     db.prepare(
@@ -765,7 +770,9 @@ export function selectCharacterByIdOrSlug(idOrSlug: number | string): CharacterP
     personality: char.personality,
     custom_prompt: char.system_prompt,
     ...(currentConfig.voice_locked ? {} : { tts_voice: char.tts_voice }),
-    active_mood: char.default_mood === 'calm' ? 'auto' : char.default_mood,
+    ...(currentConfig.emotion_presets_enabled
+      ? {}
+      : { active_mood: char.default_mood === 'calm' ? 'auto' : char.default_mood }),
   });
   return { ...char, is_active: true };
 }
