@@ -348,6 +348,21 @@ if(p==='/api/tts'&&m==='POST'){
       resolvedVoice=geminiVoice;
     }
   }
+  if(audioChunks.length===0&&effectiveEngine==='gemini-studio'&&env.OPENAI_API_KEY){
+    try{
+      const speechChunks=splitSpeechChunks(speechText,220);
+      const voice=isMalePersona?'cedar':'marin';
+      for(const chunk of speechChunks.length>0?speechChunks:[speechText]){
+        const openAiB64=await openAiSpeech(chunk,env,voice);
+        audioChunks.push({audioBase64:openAiB64,mimeType:'audio/mpeg'});
+      }
+      engine='openai-tts';
+      resolvedVoice=voice;
+    }catch(error){
+      audioChunks=[];
+      lastError=error instanceof Error?error.message:lastError;
+    }
+  }
   const preferOpenAiTts=Boolean(env.OPENAI_API_KEY)&&env.OPENAI_TTS_PRIMARY!=='false';
   if(audioChunks.length===0&&preferOpenAiTts){
     try{
@@ -363,21 +378,6 @@ if(p==='/api/tts'&&m==='POST'){
       audioChunks=[];
       lastError=error instanceof Error?error.message:lastError;
       console.error(JSON.stringify({path:'/api/tts',engine:'openai',textLength:speechText.length,error:lastError}));
-    }
-  }
-  if(audioChunks.length===0&&effectiveEngine==='gemini-studio'&&env.OPENAI_API_KEY){
-    try{
-      const speechChunks=splitSpeechChunks(speechText,220);
-      const voice=isMalePersona?'cedar':'marin';
-      for(const chunk of speechChunks.length>0?speechChunks:[speechText]){
-        const openAiB64=await openAiSpeech(chunk,env,voice);
-        audioChunks.push({audioBase64:openAiB64,mimeType:'audio/mpeg'});
-      }
-      engine='openai-tts';
-      resolvedVoice=voice;
-    }catch(error){
-      audioChunks=[];
-      lastError=error instanceof Error?error.message:lastError;
     }
   }
   if(audioChunks.length===0){
