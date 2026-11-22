@@ -1,8 +1,12 @@
 import { createServer } from 'node:http';
 import { randomBytes, timingSafeEqual } from 'node:crypto';
-import { spawn } from 'node:child_process';
-import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
-import { join, resolve } from 'node:path';
+import { execFile, spawn } from 'node:child_process';
+import { promisify } from 'node:util';
+import { existsSync, mkdirSync, readdirSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { normalizeUsbDriveRoot, resolveSafeHomePath } from './security.mjs';
+
+const execFileAsync = promisify(execFile);
 import { cpus, freemem, homedir, hostname, totalmem, uptime } from 'node:os';
 
 const HOST = '127.0.0.1';
@@ -12,13 +16,17 @@ const TOKEN = process.env.NOVA_BRIDGE_TOKEN || randomBytes(24).toString('hex');
 function isOriginAllowed(origin) {
   if (!origin) return false;
   try {
-    const u = new URL(origin);
-    if (u.hostname === 'localhost' || u.hostname === '127.0.0.1') return true;
-    if (u.protocol === 'https:' && (u.hostname.endsWith('.workers.dev') || u.hostname.endsWith('.run.app') || u.hostname.endsWith('.pages.dev'))) {
-      return true;
-    }
-    const extra = (process.env.NOVA_ALLOWED_ORIGIN || '').split(',').map((s) => s.trim()).filter(Boolean);
-    return extra.includes(origin);
+    const parsed = new URL(origin);
+    if (
+      parsed.protocol === 'http:' &&
+      (parsed.hostname === 'localhost' || parsed.hostname === '127.0.0.1')
+    ) return true;
+
+    const allowed = new Set([
+      'https://nova-ai.mexcel711.workers.dev',
+      ...(process.env.NOVA_ALLOWED_ORIGIN || '').split(',').map((value) => value.trim()).filter(Boolean),
+    ]);
+    return allowed.has(origin);
   } catch {
     return false;
   }
@@ -63,24 +71,33 @@ function safeWebUrl(value) {
   return target.href;
 }
 
-function resolveSafeHomePath(relativeOrNamed = 'home') {
-  const home = homedir();
-  const named = {
-    desktop: join(home, 'Desktop'),
-    downloads: join(home, 'Downloads'),
-    documents: join(home, 'Documents'),
-    pictures: join(home, 'Pictures'),
-    music: join(home, 'Music'),
-    videos: join(home, 'Videos'),
-    home,
-  };
-  const key = String(relativeOrNamed || 'home').toLowerCase().trim();
-  if (named[key]) return named[key];
-  const resolved = resolve(home, String(relativeOrNamed));
-  if (!resolved.startsWith(resolve(home))) {
-    throw new Error('Path must stay inside your user home directory.');
-  }
-  return resolved;
+async function getRemovableUsbDrives() {
+  if (process.platform !== 'win32') return [];
+
+  // Static PowerShell only: never interpolate a caller-supplied path or command.
+  const script = [
+    "$ErrorActionPreference = 'Stop'",
+    "$ProgressPreference = 'SilentlyContinue'",
+    "[Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false)",
+    "$drives = @(Get-CimInstance -ClassName Win32_LogicalDisk -Filter \"DriveType = 2\" | ForEach-Object { $label = if ($_.VolumeName) { [string]$_.VolumeName } else { [string]$_.DeviceID }; [PSCustomObject]@{ path = ([string]$_.DeviceID + [char]92); label = $label; freeBytes = [int64]$_.FreeSpace; sizeBytes = [int64]$_.Size } })",
+    "ConvertTo-Json -InputObject $drives -Compress",
+  ].join('; ');
+
+  const { stdout } = await execFileAsync(
+    'powershell.exe',
+    ['-NoLogo', '-NoProfile', '-NonInteractive', '-Command', script],
+    { windowsHide: true, timeout: 10000, maxBuffer: 256 * 1024, encoding: 'utf8' },
+  );
+  const parsed = JSON.parse(String(stdout || '[]').trim() || '[]');
+  const rows = Array.isArray(parsed) ? parsed : [parsed];
+  return rows
+    .filter((drive) => normalizeUsbDriveRoot(drive?.path))
+    .map((drive) => ({
+      path: normalizeUsbDriveRoot(drive.path),
+      label: String(drive.label || drive.path),
+      freeBytes: Number.isFinite(Number(drive.freeBytes)) ? Number(drive.freeBytes) : undefined,
+      sizeBytes: Number.isFinite(Number(drive.sizeBytes)) ? Number(drive.sizeBytes) : undefined,
+    }));
 }
 
 function launchApp(app) {
@@ -151,7 +168,7 @@ const server = createServer(async (req, res) => {
       capabilities: [
         'chrome', 'chrome-new-tab', 'chrome-search', 'edge', 'vscode', 'terminal',
         'notepad', 'calculator', 'explorer', 'task-manager', 'settings',
-        'known-folders', 'files-list', 'files-read', 'system-info',
+        'known-folders', 'files-list', 'system-info', 'usb-list', 'usb-transfer',
       ],
     }, origin);
   }
@@ -168,17 +185,60 @@ const server = createServer(async (req, res) => {
       homeDir: homedir(),
     }, origin);
   }
+  if (req.method === 'GET' && url.pathname === '/v1/usb/list') {
+    try {
+      const drives = await getRemovableUsbDrives();
+      return send(res, 200, { ok: true, drives }, origin);
+    } catch (error) {
+      return send(res, 503, {
+        error: error instanceof Error ? error.message : 'Unable to scan removable USB drives.',
+      }, origin);
+    }
+  }
   if (req.method !== 'POST') return send(res, 404, { error: 'Not found' }, origin);
 
   let raw = '';
+  const maxRequestBytes = url.pathname === '/v1/usb/transfer' ? 10 * 1024 * 1024 : 32 * 1024;
   for await (const part of req) {
     raw += part;
-    if (raw.length > 32000) return send(res, 413, { error: 'Request too large' }, origin);
+    if (Buffer.byteLength(raw, 'utf8') > maxRequestBytes) {
+      return send(res, 413, { error: 'Request too large' }, origin);
+    }
   }
   let body;
   try { body = JSON.parse(raw || '{}'); } catch { return send(res, 400, { error: 'Invalid JSON' }, origin); }
 
   try {
+    if (url.pathname === '/v1/usb/transfer') {
+      if (process.platform !== 'win32') {
+        return send(res, 501, { error: 'Direct removable USB transfer is currently supported on Windows only.' }, origin);
+      }
+      const requestedDrive = normalizeUsbDriveRoot(body.drivePath);
+      if (!requestedDrive) return send(res, 400, { error: 'Select a valid removable USB drive.' }, origin);
+
+      const drives = await getRemovableUsbDrives();
+      const drive = drives.find((item) => normalizeUsbDriveRoot(item.path) === requestedDrive);
+      if (!drive) return send(res, 400, { error: 'That drive is not currently detected as a removable USB drive.' }, origin);
+
+      if (typeof body.jsonContent !== 'string' || typeof body.markdownContent !== 'string') {
+        return send(res, 400, { error: 'JSON and Markdown backup content are both required.' }, origin);
+      }
+      const contentBytes =
+        Buffer.byteLength(body.jsonContent, 'utf8') + Buffer.byteLength(body.markdownContent, 'utf8');
+      if (contentBytes > 9 * 1024 * 1024) {
+        return send(res, 413, { error: 'Memory backup exceeds the 9MB transfer limit.' }, origin);
+      }
+
+      const backupDirectory = join(drive.path, 'ZARA-Memory-Backup');
+      mkdirSync(backupDirectory, { recursive: true });
+      const filePath = join(backupDirectory, 'zara-memory-latest.json');
+      const markdownPath = join(backupDirectory, 'zara-memory-latest.md');
+      const stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+      writeFileSync(filePath, body.jsonContent, 'utf8');
+      writeFileSync(markdownPath, body.markdownContent, 'utf8');
+      writeFileSync(join(backupDirectory, `zara-memory-${stamp}.json`), body.jsonContent, 'utf8');
+      return send(res, 200, { ok: true, drivePath: drive.path, filePath, markdownPath }, origin);
+    }
     if (url.pathname === '/v1/launch') {
       const app = String(body.app || '').toLowerCase();
       if (!['chrome', 'edge', 'vscode', 'terminal', 'notepad', 'calculator', 'explorer', 'task-manager', 'settings'].includes(app)) {
@@ -200,13 +260,6 @@ const server = createServer(async (req, res) => {
         type: e.isDirectory() ? 'dir' : 'file',
       }));
       return send(res, 200, { ok: true, path: target, entries }, origin);
-    }
-    if (url.pathname === '/v1/files/read') {
-      const target = resolveSafeHomePath(String(body.path || ''));
-      const st = statSync(target);
-      if (st.size > 150000) return send(res, 400, { error: 'File exceeds 150KB read limit.' }, origin);
-      const content = readFileSync(target, 'utf8');
-      return send(res, 200, { ok: true, path: target, content }, origin);
     }
     if (url.pathname === '/v1/chrome/new-tab') {
       const target = body.url ? safeWebUrl(body.url) : 'chrome://newtab';

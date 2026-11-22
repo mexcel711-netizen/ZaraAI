@@ -1,18 +1,19 @@
 # ZARA Desktop Companion (Windows)
 
-This optional local agent lets the ZARA web app request a small, explicit set of desktop actions. It binds only to `127.0.0.1`, requires a random pairing token, checks the ZARA site origin, and exposes only an allowlist (Chrome, Edge, Notepad, Calculator, HTTP/HTTPS URLs). It does **not** provide arbitrary shell access, file-system access, keystroke injection, or remote desktop access.
+This optional local agent lets the ZARA web app request a small, explicit set of desktop actions. It binds only to `127.0.0.1`, requires a random pairing token, checks the ZARA site origin, and exposes only an allowlist (Chrome, Edge, Notepad, Calculator, HTTP/HTTPS URLs). It does **not** provide arbitrary shell access, arbitrary-path file reads or writes, keystroke injection, or remote desktop access.
 
 ## Requirements
 - Windows 10/11
 - Node.js 20+ or Bun
-- ZARA repository dependencies installed (`bun install`)
+- No project dependencies are required by the companion itself.
 
 ## Start
 Open PowerShell in the repository root:
 
 ```powershell
-bun install
-bun run desktop:companion
+node desktop-companion/agent.mjs
+# Or, when using Bun:
+bun desktop-companion/agent.mjs
 ```
 
 The terminal prints a one-time pairing token. Keep the terminal open and paste that token into the ZARA **Desktop Bridge** panel. Do not share it. Stop the companion with Ctrl+C.
@@ -21,7 +22,7 @@ Optional fixed token (store it securely; do not commit it):
 
 ```powershell
 $env:NOVA_BRIDGE_TOKEN = "a-long-random-private-token"
-bun run desktop:companion
+bun desktop-companion/agent.mjs
 ```
 
 ## Voice
@@ -62,3 +63,7 @@ Supported additional voice commands:
 - Urdu-script equivalents such as `ٹاسک مینیجر کھولو`, `ڈاؤن لوڈز کھولو`, and `فائل ایکسپلورر کھولو`
 
 The companion opens only fixed, known folders under the current Windows user's profile. It does not accept arbitrary paths or run arbitrary PowerShell/shell commands.
+
+
+## USB memory backup
+On Windows, the companion detects removable drives (not fixed disks) and accepts a backup only when the selected drive is still detected as removable. ZARA writes the JSON and Markdown memory vault into `ZARA-Memory-Backup` on that drive. The transfer endpoint has a 9MB content limit; on other operating systems, use the browser's linked-folder or download fallback.
