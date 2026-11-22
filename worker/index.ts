@@ -306,6 +306,23 @@ if(p==='/api/tts'&&m==='POST'){
   let engine:GeminiTtsModelName|'openai-tts'|'edge-neural-v2'='edge-neural-v2';
   let resolvedVoice=selectedVoice;
   let lastError='Voice synthesis failed.';
+  const preferOpenAiTts=Boolean(env.OPENAI_API_KEY)&&env.OPENAI_TTS_PRIMARY!=='false';
+  if(audioChunks.length===0&&preferOpenAiTts){
+    try{
+      const speechChunks=splitSpeechChunks(speechText,220);
+      const voice=isMalePersona?'cedar':'marin';
+      for(const chunk of speechChunks.length>0?speechChunks:[speechText]){
+        const openAiB64=await openAiSpeech(chunk,env,voice);
+        audioChunks.push({audioBase64:openAiB64,mimeType:'audio/mpeg'});
+      }
+      engine='openai-tts';
+      resolvedVoice=voice;
+    }catch(error){
+      audioChunks=[];
+      lastError=error instanceof Error?error.message:lastError;
+      console.error(JSON.stringify({path:'/api/tts',engine:'openai',textLength:speechText.length,error:lastError}));
+    }
+  }
   if(effectiveEngine==='gemini-studio'&&env.GEMINI_API_KEY){
     const geminiVoice=resolveGeminiVoiceForSelection(selectedVoice);
     const sentences=splitSpeechChunks(speechText,240);
@@ -361,23 +378,6 @@ if(p==='/api/tts'&&m==='POST'){
     }catch(error){
       audioChunks=[];
       lastError=error instanceof Error?error.message:lastError;
-    }
-  }
-  const preferOpenAiTts=Boolean(env.OPENAI_API_KEY)&&env.OPENAI_TTS_PRIMARY!=='false';
-  if(audioChunks.length===0&&preferOpenAiTts){
-    try{
-      const speechChunks=splitSpeechChunks(speechText,220);
-      const voice=isMalePersona?'cedar':'marin';
-      for(const chunk of speechChunks.length>0?speechChunks:[speechText]){
-        const openAiB64=await openAiSpeech(chunk,env,voice);
-        audioChunks.push({audioBase64:openAiB64,mimeType:'audio/mpeg'});
-      }
-      engine='openai-tts';
-      resolvedVoice=voice;
-    }catch(error){
-      audioChunks=[];
-      lastError=error instanceof Error?error.message:lastError;
-      console.error(JSON.stringify({path:'/api/tts',engine:'openai',textLength:speechText.length,error:lastError}));
     }
   }
   if(audioChunks.length===0){
