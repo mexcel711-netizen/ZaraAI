@@ -56,7 +56,7 @@ import { handleFeatureRoute, readHeartAndBrain, saveHeartAndBrain } from './feat
 
 interface D1Statement { bind(...v:unknown[]):D1Statement; all<T>():Promise<{results:T[]}>; first<T>():Promise<T|null>; run():Promise<unknown>; }
 interface DB { prepare(sql:string):D1Statement; }
-interface Env { DB:DB; AI?:{run(model:string,input:{messages:Array<{role:string;content:string}>;max_tokens?:number;temperature?:number}):Promise<{response?:string;choices?:Array<{message?:{content?:string}}>}>}; ASSETS:{fetch(r:Request):Promise<Response>}; GEMINI_API_KEY?:string; OPENAI_API_KEY?:string; OPENAI_CHAT_MODEL?:string; OPENAI_TTS_MODEL?:string; CLOUDFLARE_MODEL?:string; }
+interface Env { DB:DB; AI?:{run(model:string,input:{messages:Array<{role:string;content:string}>;max_tokens?:number;temperature?:number}):Promise<{response?:string;choices?:Array<{message?:{content?:string}}>}>}; ASSETS:{fetch(r:Request):Promise<Response>}; GEMINI_API_KEY?:string; OPENAI_API_KEY?:string; OPENAI_CHAT_MODEL?:string; OPENAI_TTS_MODEL?:string; OPENAI_TTS_PRIMARY?:string; CLOUDFLARE_MODEL?:string; }
 const DEFAULT:AppConfig={assistant_name:'ZARA',personality:'warm_urdu_companion',custom_prompt:'Tum ZARA ho — 21 saal ki real-life best friend, koi tool ya AI nahi. Deep emotional connection, empathy aur warmth ke saath Roman Urdu/Urdu/English mixed mein baat karo, jaise late-night phone call pe baat ho rahi ho.',language:'bilingual',response_tone:'casual',tts_voice:'ur-PK-UzmaNeural',voice_locked:true,tts_engine_mode:'auto',voice_speed:1,voice_volume:1,voice_activity_threshold:DEFAULT_VOICE_ACTIVITY_THRESHOLD,stt_model:'base',wake_word:'hey zara',wake_word_enabled:false,auto_speak:true,deep_thinking_mode:'auto',default_model:'gemini-4-hydrogen',ai_provider:'auto',active_mood:'auto',mood_intensity:DEFAULT_MOOD_INTENSITY,active_character_id:2,hands_free_mode:false,camera_awareness_enabled:false,hairstyle:'wavy',user_name:'Boss',user_nickname:'Boss',assistant_age:'21',onboarding_completed:false,whatsapp_number:'',referral_source:'',auto_usb_transfer:false,last_usb_sync_at:'',last_usb_drive_label:''};
 const json=(x:unknown,s=200)=>Response.json(x,{status:s,headers:{'Cache-Control':'no-store'}});
 const all=async<T>(db:DB,q:string,...v:unknown[]) => (await db.prepare(q).bind(...v).all<T>()).results;
@@ -77,10 +77,10 @@ async function openAiChat(env:Env,prompt:string,history:any[],msg:string,thinkin
   if(!text.trim())throw new Error('OpenAI returned an empty response');
   return {text,model};
 }
-async function openAiSpeech(text:string,env:Env):Promise<string>{
+async function openAiSpeech(text:string,env:Env,voice:'marin'|'cedar'='marin'):Promise<string>{
   if(!env.OPENAI_API_KEY)throw new Error('OPENAI_API_KEY is not configured');
-  if(text.length>4096)throw new Error('Speech text exceeds OpenAI TTS 4096-character limit.');
-  const response=await fetch('https://api.openai.com/v1/audio/speech',{method:'POST',headers:{Authorization:'Bearer '+env.OPENAI_API_KEY,'Content-Type':'application/json'},body:JSON.stringify({model:env.OPENAI_TTS_MODEL||'gpt-4o-mini-tts',voice:'marin',input:text,instructions:'Speak naturally and warmly in Pakistani Urdu (Urdu Pakistan accent). Pronounce Urdu words clearly, with a friendly female assistant style, conversational pace, gentle intonation, and no exaggerated robotic delivery.',response_format:'mp3'}),signal:AbortSignal.timeout(45000)});
+  if(text.length>4096)throw new Error('Speech chunk exceeds OpenAI TTS 4096-character limit.');
+  const response=await fetch('https://api.openai.com/v1/audio/speech',{method:'POST',headers:{Authorization:'Bearer '+env.OPENAI_API_KEY,'Content-Type':'application/json'},body:JSON.stringify({model:env.OPENAI_TTS_MODEL||'gpt-4o-mini-tts',voice,input:text,instructions:'Speak in a natural Pakistani Urdu and English bilingual style. When the input is Urdu or Roman Urdu, pronounce it clearly with a Pakistani accent. Sound like a warm, expressive, friendly conversational companion. Use natural intonation, gentle pauses, and a relaxed pace; avoid a robotic or exaggerated announcer style.',response_format:'mp3'}),signal:AbortSignal.timeout(45000)});
   if(!response.ok){const detail=await response.text();throw new Error('OpenAI speech error ('+response.status+'): '+detail.slice(0,500));}
   const bytes=new Uint8Array(await response.arrayBuffer());let binary='';for(let i=0;i<bytes.length;i+=0x8000)binary+=String.fromCharCode(...bytes.subarray(i,Math.min(i+0x8000,bytes.length)));return btoa(binary);
 }
@@ -348,9 +348,37 @@ if(p==='/api/tts'&&m==='POST'){
       resolvedVoice=geminiVoice;
     }
   }
-  if(audioChunks.length===0&&env.OPENAI_API_KEY){
-    try{const openAiB64=await openAiSpeech(speechText,env);audioChunks=[{audioBase64:openAiB64,mimeType:'audio/mpeg'}];engine='openai-tts';resolvedVoice='marin';}
-    catch(error){lastError=error instanceof Error?error.message:lastError;console.error(JSON.stringify({path:'/api/tts',engine:'openai',textLength:speechText.length,error:lastError}));}
+  const preferOpenAiTts=Boolean(env.OPENAI_API_KEY)&&env.OPENAI_TTS_PRIMARY!=='false';
+  if(audioChunks.length===0&&preferOpenAiTts){
+    try{
+      const speechChunks=splitSpeechChunks(speechText,220);
+      const voice=isMalePersona?'cedar':'marin';
+      for(const chunk of speechChunks.length>0?speechChunks:[speechText]){
+        const openAiB64=await openAiSpeech(chunk,env,voice);
+        audioChunks.push({audioBase64:openAiB64,mimeType:'audio/mpeg'});
+      }
+      engine='openai-tts';
+      resolvedVoice=voice;
+    }catch(error){
+      audioChunks=[];
+      lastError=error instanceof Error?error.message:lastError;
+      console.error(JSON.stringify({path:'/api/tts',engine:'openai',textLength:speechText.length,error:lastError}));
+    }
+  }
+  if(audioChunks.length===0&&effectiveEngine==='gemini-studio'&&env.OPENAI_API_KEY){
+    try{
+      const speechChunks=splitSpeechChunks(speechText,220);
+      const voice=isMalePersona?'cedar':'marin';
+      for(const chunk of speechChunks.length>0?speechChunks:[speechText]){
+        const openAiB64=await openAiSpeech(chunk,env,voice);
+        audioChunks.push({audioBase64:openAiB64,mimeType:'audio/mpeg'});
+      }
+      engine='openai-tts';
+      resolvedVoice=voice;
+    }catch(error){
+      audioChunks=[];
+      lastError=error instanceof Error?error.message:lastError;
+    }
   }
   if(audioChunks.length===0){
     const edgeVoice=resolveEdgeVoiceForSelection(selectedVoice,shouldSpeakUrdu,speechContainsUrdu);
