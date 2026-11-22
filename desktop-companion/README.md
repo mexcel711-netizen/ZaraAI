@@ -22,7 +22,7 @@ Optional fixed token (store it securely; do not commit it):
 
 ```powershell
 $env:NOVA_BRIDGE_TOKEN = "a-long-random-private-token"
-bun run desktop:companion
+bun desktop-companion/agent.mjs
 ```
 
 ## Voice
