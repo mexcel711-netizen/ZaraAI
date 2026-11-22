@@ -1242,9 +1242,9 @@ async function startServer() {
     // Installers are distributed as one .mjs file, so inline the helper instead
     // of leaving a relative import that would be missing on the target PC.
     const bundledAgentSource =
-      securityModuleSource + '\\n' +
+      securityModuleSource + '\n' +
       agentModuleSource.replace(
-        "import { normalizeUsbDriveRoot, resolveSafeHomePath } from './security.mjs';\\n",
+        "import { normalizeUsbDriveRoot, resolveSafeHomePath } from './security.mjs';\n",
         '',
       );
     const agentSource = bundledAgentSource;
