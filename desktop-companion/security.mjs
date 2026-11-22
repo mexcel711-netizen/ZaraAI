@@ -1,5 +1,4 @@
 import { realpathSync } from 'node:fs';
-import { homedir } from 'node:os';
 import { isAbsolute, relative, resolve, sep } from 'node:path';
 
 export function isPathSafelyInsideRoot(candidatePath, rootPath) {
@@ -9,7 +8,7 @@ export function isPathSafelyInsideRoot(candidatePath, rootPath) {
   return rel === '' || (rel !== '..' && !rel.startsWith(`..${sep}`) && !isAbsolute(rel));
 }
 
-export function resolveSafeHomePath(location = 'home', homeDirectory = homedir()) {
+export function resolveSafeHomePath(location = 'home', homeDirectory = process.env.USERPROFILE || process.env.HOME || '.') {
   const folders = {
     desktop: 'Desktop',
     downloads: 'Downloads',
