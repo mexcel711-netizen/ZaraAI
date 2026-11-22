@@ -1,0 +1,572 @@
+@import "tailwindcss";
+
+@theme {
+  --font-display: "Outfit", ui-sans-serif, system-ui, sans-serif;
+  --font-sans: "Plus Jakarta Sans", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+}
+
+@layer base {
+  html,
+  body {
+    font-family: var(--font-sans);
+    background-color: #060a12;
+    color: #f1f5f9;
+  }
+
+  h1,
+  h2,
+  h3,
+  .font-display {
+    font-family: var(--font-display);
+  }
+
+  .tabular-nums {
+    font-variant-numeric: tabular-nums;
+  }
+}
+
+/* Custom sleek dark scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(148, 163, 184, 0.18);
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(0, 245, 255, 0.35);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* ZARA Studio Obsidian Design System */
+:root {
+  color-scheme: dark;
+  --zara-bg: #04070d;
+  --zara-surface: rgba(9, 15, 26, 0.92);
+  --zara-surface-elevated: rgba(13, 22, 38, 0.94);
+  --zara-hairline: rgba(255, 255, 255, 0.08);
+  --zara-accent: #38bdf8;
+  --zara-glow: rgba(34, 211, 238, 0.22);
+}
+
+body {
+  background-color: var(--zara-bg);
+  background-image:
+    radial-gradient(ellipse 64% 46% at 50% 0%, rgba(14, 116, 144, 0.14), transparent 65%),
+    radial-gradient(ellipse 42% 38% at 86% 92%, rgba(30, 58, 138, 0.09), transparent 60%),
+    linear-gradient(180deg, #04070d 0%, #060b14 54%, #03060b 100%);
+  background-attachment: fixed;
+}
+
+/* Subtle rhythmic heartbeat pulse strictly on the container's background glow */
+@keyframes holo-heartbeat-pulse {
+  0%,
+  56%,
+  100% {
+    opacity: 0.62;
+    transform: scale(0.97);
+  }
+  14% {
+    opacity: 0.96;
+    transform: scale(1.035);
+  }
+  26% {
+    opacity: 0.72;
+    transform: scale(0.99);
+  }
+  38% {
+    opacity: 0.88;
+    transform: scale(1.018);
+  }
+}
+
+@keyframes voice-bar-pulse {
+  0%,
+  100% {
+    transform: scaleY(var(--bar-min, 0.2));
+    opacity: var(--bar-opacity-low, 0.55);
+  }
+  50% {
+    transform: scaleY(var(--bar-max, 0.8));
+    opacity: var(--bar-opacity-high, 0.95);
+  }
+}
+
+.voice-frequency-bar {
+  transform-origin: bottom;
+  transform: scaleY(var(--bar-max, 0.5));
+  animation: voice-bar-pulse var(--bar-duration, 1200ms) ease-in-out var(--bar-delay, 0ms) infinite;
+  will-change: transform, opacity;
+}
+
+.voice-frequency-bars[data-active='true'] .voice-frequency-bar {
+  animation-duration: calc(var(--bar-duration, 1200ms) * 0.62);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .voice-frequency-bar {
+    animation: none !important;
+    transform: scaleY(var(--bar-max, 0.5));
+    opacity: var(--bar-opacity-high, 0.85);
+  }
+}
+
+@keyframes holo-focus-border {
+  0%,
+  100% {
+    border-color: rgba(56, 189, 248, 0.58);
+    box-shadow:
+      0 0 0 1px rgba(103, 232, 249, 0.24),
+      0 0 22px rgba(56, 189, 248, 0.22),
+      inset 0 0 18px rgba(34, 211, 238, 0.12);
+  }
+  50% {
+    border-color: rgba(125, 211, 252, 0.85);
+    box-shadow:
+      0 0 0 1px rgba(125, 211, 252, 0.36),
+      0 0 28px rgba(56, 189, 248, 0.32),
+      inset 0 0 22px rgba(56, 189, 248, 0.18);
+  }
+}
+
+[data-testid="holographic-avatar"] {
+  --avatar-glow-color: #38bdf8;
+  --avatar-mood-intensity: 1;
+  --avatar-anim-duration-scale: 1;
+  --avatar-mood-scale: 1;
+  --avatar-aura-scale: 1;
+  position: relative;
+  isolation: isolate;
+  border-radius: 1rem;
+  border: 1px solid transparent;
+  padding: 0.25rem;
+  transition:
+    border-color 280ms ease,
+    box-shadow 280ms ease,
+    background 280ms ease;
+}
+
+[data-testid="holographic-avatar"][data-active-mood="happy"],
+[data-testid="holographic-avatar"][data-mood="happy"],
+[data-testid="holographic-avatar"][data-mood="excited"] {
+  --avatar-glow-color: #22d3ee;
+}
+
+[data-testid="holographic-avatar"][data-active-mood="empathetic"],
+[data-testid="holographic-avatar"][data-mood="empathetic"] {
+  --avatar-glow-color: #14b8a6;
+}
+
+[data-testid="holographic-avatar"][data-active-mood="sad"],
+[data-testid="holographic-avatar"][data-mood="sad"] {
+  --avatar-glow-color: #6366f1;
+}
+
+[data-testid="holographic-avatar"][data-active-mood="love"],
+[data-testid="holographic-avatar"][data-mood="love"] {
+  --avatar-glow-color: #f43f5e;
+}
+
+[data-testid="holographic-avatar"][data-active-mood="surprised"],
+[data-testid="holographic-avatar"][data-mood="surprised"],
+[data-testid="holographic-avatar"][data-mood="curious"] {
+  --avatar-glow-color: #7dd3fc;
+}
+
+[data-testid="holographic-avatar"][data-focus="active"],
+[data-testid="holographic-avatar"][data-state="thinking"] {
+  border-color: rgba(56, 189, 248, 0.58);
+  background: linear-gradient(
+    180deg,
+    rgba(14, 116, 144, 0.09) 0%,
+    rgba(30, 58, 138, 0.05) 100%
+  );
+  box-shadow:
+    0 0 0 1px rgba(103, 232, 249, 0.22),
+    0 0 22px rgba(56, 189, 248, 0.22),
+    inset 0 0 18px rgba(34, 211, 238, 0.11);
+}
+
+[data-testid="holographic-avatar"][data-state="thinking"] {
+  animation-name: holo-focus-border;
+  animation-duration: calc(2.4s * var(--avatar-anim-duration-scale, 1));
+  animation-timing-function: ease-in-out;
+  animation-iteration-count: infinite;
+}
+
+[data-testid="holographic-avatar"]::before {
+  content: "";
+  position: absolute;
+  inset: 8%;
+  z-index: -1;
+  border-radius: 9999px;
+  pointer-events: none;
+  opacity: 0.62;
+  scale: var(--avatar-aura-scale, 1);
+  background: radial-gradient(
+    circle at 50% 48%,
+    color-mix(in srgb, var(--avatar-glow-color) 30%, transparent) 0%,
+    color-mix(in srgb, var(--avatar-glow-color) 12%, transparent) 48%,
+    transparent 76%
+  );
+  animation-name: holo-heartbeat-pulse;
+  animation-duration: calc(3.6s * var(--avatar-anim-duration-scale, 1));
+  animation-timing-function: ease-in-out;
+  animation-iteration-count: infinite;
+  transition: scale 220ms ease;
+  will-change: transform, opacity, scale;
+}
+
+[data-testid="holographic-avatar"][data-focus="active"]::before,
+[data-testid="holographic-avatar"][data-state="thinking"]::before {
+  background: radial-gradient(
+    circle at 50% 48%,
+    rgba(56, 189, 248, 0.30) 0%,
+    rgba(99, 102, 241, 0.13) 48%,
+    transparent 76%
+  );
+}
+
+@keyframes avatar-mood-calm-breathe {
+  0%,
+  100% {
+    transform: translate3d(0, 0, 0) scale(1);
+    filter: drop-shadow(0 0 18px color-mix(in srgb, var(--avatar-glow-color) 28%, transparent));
+  }
+  50% {
+    transform: translate3d(0, -2.5px, 0) scale(1.006);
+    filter: drop-shadow(0 0 22px color-mix(in srgb, var(--avatar-glow-color) 38%, transparent));
+  }
+}
+
+@keyframes avatar-mood-happy-sway {
+  0%,
+  100% {
+    transform: translate3d(-1.5px, -1px, 0) rotate(-1.8deg);
+    filter: drop-shadow(0 0 18px color-mix(in srgb, var(--avatar-glow-color) 34%, transparent));
+  }
+  25% {
+    transform: translate3d(0, -4px, 0) rotate(0deg);
+    filter: drop-shadow(0 0 26px color-mix(in srgb, var(--avatar-glow-color) 48%, transparent));
+  }
+  50% {
+    transform: translate3d(1.5px, -1px, 0) rotate(1.8deg);
+    filter: drop-shadow(0 0 18px color-mix(in srgb, var(--avatar-glow-color) 34%, transparent));
+  }
+  75% {
+    transform: translate3d(0, -3.5px, 0) rotate(0deg);
+    filter: drop-shadow(0 0 24px color-mix(in srgb, var(--avatar-glow-color) 44%, transparent));
+  }
+}
+
+@keyframes avatar-mood-happy-glow {
+  0%,
+  100% {
+    opacity: 0.62;
+    transform: scale(0.98);
+  }
+  50% {
+    opacity: 0.94;
+    transform: scale(1.045);
+  }
+}
+
+@keyframes avatar-mood-empathetic-glow {
+  0%,
+  100% {
+    opacity: 0.56;
+    transform: scale(0.97);
+  }
+  50% {
+    opacity: 0.96;
+    transform: scale(1.06);
+  }
+}
+
+@keyframes avatar-mood-empathetic-canvas {
+  0%,
+  100% {
+    transform: translate3d(0, 0, 0) scale(1);
+    filter: drop-shadow(0 0 14px color-mix(in srgb, var(--avatar-glow-color) 32%, transparent))
+      drop-shadow(0 0 24px color-mix(in srgb, var(--avatar-glow-color) 18%, transparent));
+  }
+  50% {
+    transform: translate3d(0, -2px, 0) scale(1.008);
+    filter: drop-shadow(0 0 26px color-mix(in srgb, var(--avatar-glow-color) 56%, transparent))
+      drop-shadow(0 0 40px color-mix(in srgb, var(--avatar-glow-color) 30%, transparent));
+  }
+}
+
+@keyframes avatar-mood-love-drift {
+  0%,
+  100% {
+    transform: translate3d(0, 0, 0) rotate(-1.1deg) scale(1.002);
+    filter: drop-shadow(0 0 18px color-mix(in srgb, var(--avatar-glow-color) 36%, transparent));
+  }
+  50% {
+    transform: translate3d(0, -3px, 0) rotate(1.1deg) scale(1.015);
+    filter: drop-shadow(0 0 26px color-mix(in srgb, var(--avatar-glow-color) 54%, transparent));
+  }
+}
+
+@keyframes avatar-mood-love-pulse {
+  0%,
+  60%,
+  100% {
+    opacity: 0.58;
+    transform: scale(0.97);
+  }
+  18% {
+    opacity: 0.95;
+    transform: scale(1.05);
+  }
+  34% {
+    opacity: 0.72;
+    transform: scale(1);
+  }
+  46% {
+    opacity: 0.90;
+    transform: scale(1.03);
+  }
+}
+
+@keyframes avatar-mood-sad-drift {
+  0%,
+  100% {
+    transform: translate3d(0, 0, 0) scale(0.996);
+    filter: drop-shadow(0 0 14px color-mix(in srgb, var(--avatar-glow-color) 28%, transparent));
+  }
+  50% {
+    transform: translate3d(0, 3px, 0) scale(0.99);
+    filter: drop-shadow(0 0 20px color-mix(in srgb, var(--avatar-glow-color) 42%, transparent));
+  }
+}
+
+@keyframes avatar-mood-sad-glow {
+  0%,
+  100% {
+    opacity: 0.42;
+    transform: scale(0.96);
+  }
+  50% {
+    opacity: 0.68;
+    transform: scale(1.01);
+  }
+}
+
+@keyframes avatar-mood-surprised-perk {
+  0%,
+  100% {
+    transform: translate3d(0, 0, 0) rotate(0deg) scale(1);
+    filter: drop-shadow(0 0 18px color-mix(in srgb, var(--avatar-glow-color) 34%, transparent));
+  }
+  35% {
+    transform: translate3d(0, -4.5px, 0) rotate(1.1deg) scale(1.022);
+    filter: drop-shadow(0 0 28px color-mix(in srgb, var(--avatar-glow-color) 56%, transparent));
+  }
+  70% {
+    transform: translate3d(0, -2px, 0) rotate(-0.7deg) scale(1.01);
+    filter: drop-shadow(0 0 22px color-mix(in srgb, var(--avatar-glow-color) 42%, transparent));
+  }
+}
+
+[data-testid="holographic-avatar"] canvas {
+  filter: drop-shadow(0 0 18px color-mix(in srgb, var(--avatar-glow-color) 28%, transparent));
+  transform-origin: 50% 62%;
+  scale: var(--avatar-mood-scale, 1);
+  will-change: transform, filter, scale;
+  animation-name: avatar-mood-calm-breathe;
+  animation-duration: calc(4.4s * var(--avatar-anim-duration-scale, 1));
+  animation-timing-function: ease-in-out;
+  animation-iteration-count: infinite;
+  transition: scale 220ms ease;
+}
+
+[data-testid="holographic-avatar"][data-state="speaking"]::before {
+  background: radial-gradient(
+    circle at 50% 48%,
+    color-mix(in srgb, var(--avatar-glow-color) 34%, transparent) 0%,
+    color-mix(in srgb, var(--avatar-glow-color) 14%, transparent) 48%,
+    transparent 76%
+  );
+}
+
+[data-testid="holographic-avatar"][data-state="listening"]::before {
+  background: radial-gradient(
+    circle at 50% 48%,
+    color-mix(in srgb, var(--avatar-glow-color) 32%, transparent) 0%,
+    rgba(16, 185, 129, 0.12) 48%,
+    transparent 76%
+  );
+}
+
+[data-testid="holographic-avatar"][data-active-mood="happy"] canvas,
+[data-testid="holographic-avatar"][data-mood="happy"] canvas,
+[data-testid="holographic-avatar"][data-mood="excited"] canvas {
+  animation-name: avatar-mood-happy-sway;
+  animation-duration: calc(3.2s * var(--avatar-anim-duration-scale, 1));
+}
+
+[data-testid="holographic-avatar"][data-active-mood="happy"]::before,
+[data-testid="holographic-avatar"][data-mood="happy"]::before,
+[data-testid="holographic-avatar"][data-mood="excited"]::before {
+  background: radial-gradient(
+    circle at 50% 48%,
+    color-mix(in srgb, var(--avatar-glow-color) 36%, transparent) 0%,
+    color-mix(in srgb, var(--avatar-glow-color) 16%, transparent) 48%,
+    transparent 76%
+  );
+  animation-name: avatar-mood-happy-glow;
+  animation-duration: calc(3.2s * var(--avatar-anim-duration-scale, 1));
+}
+
+[data-testid="holographic-avatar"][data-active-mood="empathetic"] canvas,
+[data-testid="holographic-avatar"][data-mood="empathetic"] canvas {
+  animation-name: avatar-mood-empathetic-canvas;
+  animation-duration: calc(3.8s * var(--avatar-anim-duration-scale, 1));
+}
+
+[data-testid="holographic-avatar"][data-active-mood="empathetic"]::before,
+[data-testid="holographic-avatar"][data-mood="empathetic"]::before {
+  background: radial-gradient(
+    circle at 50% 48%,
+    color-mix(in srgb, var(--avatar-glow-color) 38%, transparent) 0%,
+    color-mix(in srgb, var(--avatar-glow-color) 18%, transparent) 50%,
+    transparent 78%
+  );
+  animation-name: avatar-mood-empathetic-glow;
+  animation-duration: calc(3.8s * var(--avatar-anim-duration-scale, 1));
+}
+
+[data-testid="holographic-avatar"][data-active-mood="love"] canvas,
+[data-testid="holographic-avatar"][data-mood="love"] canvas {
+  animation-name: avatar-mood-love-drift;
+  animation-duration: calc(4.2s * var(--avatar-anim-duration-scale, 1));
+}
+
+[data-testid="holographic-avatar"][data-active-mood="love"]::before,
+[data-testid="holographic-avatar"][data-mood="love"]::before {
+  background: radial-gradient(
+    circle at 50% 48%,
+    color-mix(in srgb, var(--avatar-glow-color) 36%, transparent) 0%,
+    color-mix(in srgb, var(--avatar-glow-color) 15%, transparent) 48%,
+    transparent 76%
+  );
+  animation-name: avatar-mood-love-pulse;
+  animation-duration: calc(2.8s * var(--avatar-anim-duration-scale, 1));
+}
+
+[data-testid="holographic-avatar"][data-active-mood="sad"] canvas,
+[data-testid="holographic-avatar"][data-mood="sad"] canvas {
+  animation-name: avatar-mood-sad-drift;
+  animation-duration: calc(4.8s * var(--avatar-anim-duration-scale, 1));
+}
+
+[data-testid="holographic-avatar"][data-active-mood="sad"]::before,
+[data-testid="holographic-avatar"][data-mood="sad"]::before {
+  background: radial-gradient(
+    circle at 50% 48%,
+    color-mix(in srgb, var(--avatar-glow-color) 32%, transparent) 0%,
+    color-mix(in srgb, var(--avatar-glow-color) 14%, transparent) 48%,
+    transparent 76%
+  );
+  animation-name: avatar-mood-sad-glow;
+  animation-duration: calc(4.8s * var(--avatar-anim-duration-scale, 1));
+}
+
+[data-testid="holographic-avatar"][data-active-mood="surprised"] canvas,
+[data-testid="holographic-avatar"][data-mood="surprised"] canvas,
+[data-testid="holographic-avatar"][data-mood="curious"] canvas {
+  animation-name: avatar-mood-surprised-perk;
+  animation-duration: calc(2.5s * var(--avatar-anim-duration-scale, 1));
+  animation-timing-function: cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+[data-testid="holographic-avatar"][data-active-mood="surprised"]::before,
+[data-testid="holographic-avatar"][data-mood="surprised"]::before,
+[data-testid="holographic-avatar"][data-mood="curious"]::before {
+  background: radial-gradient(
+    circle at 50% 48%,
+    color-mix(in srgb, var(--avatar-glow-color) 36%, transparent) 0%,
+    color-mix(in srgb, var(--avatar-glow-color) 15%, transparent) 48%,
+    transparent 76%
+  );
+  animation-name: avatar-mood-happy-glow;
+  animation-duration: calc(2.5s * var(--avatar-anim-duration-scale, 1));
+}
+
+/* Workspace three-column architectural glass surfaces */
+[aria-label="Core context and live intelligence"],
+[aria-label="Assistant command stage"],
+[aria-label="Assistant transcript and workspace"] {
+  min-width: 0;
+}
+
+[aria-label="Core context and live intelligence"] > div {
+  border-color: var(--zara-hairline);
+  background: linear-gradient(165deg, rgba(11, 18, 31, 0.94), rgba(7, 12, 22, 0.96));
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.28), inset 0 1px 0 rgba(255, 255, 255, 0.03);
+}
+
+[aria-label="Assistant command stage"] > div {
+  border-color: var(--zara-hairline);
+  background: linear-gradient(160deg, rgba(10, 17, 29, 0.95), rgba(6, 11, 20, 0.98));
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.34), inset 0 1px 0 rgba(255, 255, 255, 0.035);
+}
+
+[aria-label="Assistant transcript and workspace"] {
+  border-color: var(--zara-hairline);
+  background: linear-gradient(180deg, rgba(9, 15, 27, 0.96), rgba(6, 10, 19, 0.99));
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.34), inset 0 1px 0 rgba(255, 255, 255, 0.03);
+  overflow: hidden;
+}
+
+[aria-label="Assistant command stage"] button,
+[aria-label="Core context and live intelligence"] button,
+[aria-label="Assistant transcript and workspace"] button {
+  outline-offset: 2px;
+}
+
+[aria-label="Assistant command stage"] button:focus-visible,
+[aria-label="Core context and live intelligence"] button:focus-visible,
+[aria-label="Assistant transcript and workspace"] button:focus-visible {
+  outline: 2px solid rgba(56, 189, 248, 0.85);
+}
+
+@media (min-width: 1280px) {
+  [aria-label="Core context and live intelligence"],
+  [aria-label="Assistant command stage"] {
+    scrollbar-width: thin;
+  }
+}
+
+@media (max-width: 1023px) {
+  [aria-label="Assistant command stage"] {
+    order: 1;
+  }
+
+  [aria-label="Core context and live intelligence"] {
+    order: 2;
+  }
+
+  [aria-label="Assistant transcript and workspace"] {
+    order: 3;
+  }
+}

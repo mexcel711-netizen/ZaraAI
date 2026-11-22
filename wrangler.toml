@@ -1,0 +1,27 @@
+name = "novaai"
+main = "worker/index.ts"
+compatibility_date = "2026-11-17"
+workers_dev = true
+
+[assets]
+directory = "./dist"
+binding = "ASSETS"
+not_found_handling = "single-page-application"
+
+[ai]
+binding = "AI"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "nova-ai-production"
+database_id = "a33bc077-b71a-4684-b55a-cf8475639bb5"
+
+[vars]
+CLOUDFLARE_MODEL = "@cf/google/gemma-4-26b-a4b-it"
+
+[observability]
+enabled = true
+
+[observability.traces]
+enabled = true
+head_sampling_rate = 0.1
