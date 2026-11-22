@@ -79,7 +79,7 @@ async function getRemovableUsbDrives() {
     "$ErrorActionPreference = 'Stop'",
     "$ProgressPreference = 'SilentlyContinue'",
     "[Console]::OutputEncoding = New-Object System.Text.UTF8Encoding($false)",
-    "$drives = @(Get-CimInstance -ClassName Win32_LogicalDisk -Filter \"DriveType = 2\" | ForEach-Object { $label = if ($_.VolumeName) { [string]$_.VolumeName } else { [string]$_.DeviceID }; [PSCustomObject]@{ path = ([string]$_.DeviceID + '\\\\'); label = $label; freeBytes = [int64]$_.FreeSpace; sizeBytes = [int64]$_.Size } })",
+    "$drives = @(Get-CimInstance -ClassName Win32_LogicalDisk -Filter \"DriveType = 2\" | ForEach-Object { $label = if ($_.VolumeName) { [string]$_.VolumeName } else { [string]$_.DeviceID }; [PSCustomObject]@{ path = ([string]$_.DeviceID + [char]92); label = $label; freeBytes = [int64]$_.FreeSpace; sizeBytes = [int64]$_.Size } })",
     "ConvertTo-Json -InputObject $drives -Compress",
   ].join('; ');
 
