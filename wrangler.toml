@@ -18,6 +18,8 @@ database_id = "a33bc077-b71a-4684-b55a-cf8475639bb5"
 
 [vars]
 CLOUDFLARE_MODEL = "@cf/google/gemma-4-26b-a4b-it"
+OPENAI_TTS_MODEL = "gpt-4o-mini-tts"
+OPENAI_TTS_PRIMARY = "true"
 
 [observability]
 enabled = true
