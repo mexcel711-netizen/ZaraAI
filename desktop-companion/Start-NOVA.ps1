@@ -7,7 +7,7 @@ if (-not $node -and -not $bun) {
   throw 'Install Node.js 20+ or Bun, then start ZARA Desktop Companion again.'
 }
 
-$bytes = [byte[]]::new(32)
+$bytes = New-Object byte[] 32
 $rng = [System.Security.Cryptography.RandomNumberGenerator]::Create()
 try {
   # Compatible with the Windows PowerShell 5.1/.NET Framework runtime.
