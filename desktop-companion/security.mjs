@@ -37,10 +37,11 @@ export function resolveSafeHomePath(location = 'home', homeDirectory = process.e
     if (!isPathSafelyInsideRoot(realTarget, realHome)) {
       throw new Error('Requested folder resolves outside your home directory.');
     }
+    return realTarget;
   } catch (error) {
     if (error?.code !== 'ENOENT') throw error;
+    return target;
   }
-  return target;
 }
 
 export function normalizeUsbDriveRoot(value) {
