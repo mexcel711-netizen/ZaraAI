@@ -1,6 +1,6 @@
 import { realpathSync } from 'node:fs';
 import { homedir } from 'node:os';
-import { isAbsolute, join, relative, resolve, sep } from 'node:path';
+import { isAbsolute, relative, resolve, sep } from 'node:path';
 
 export function isPathSafelyInsideRoot(candidatePath, rootPath) {
   const root = resolve(rootPath);
@@ -46,5 +46,7 @@ export function resolveSafeHomePath(location = 'home', homeDirectory = homedir()
 
 export function normalizeUsbDriveRoot(value) {
   const candidate = String(value || '').trim();
-  return /^[a-z]:\\\\$/i.test(candidate) ? candidate.toUpperCase() : null;
+  return candidate.length === 3 && /^[a-z]:/i.test(candidate) && candidate.charCodeAt(2) === 92
+    ? candidate.toUpperCase()
+    : null;
 }
