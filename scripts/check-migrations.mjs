@@ -12,6 +12,7 @@ const migrations = [
   'migrations/0006_voice_history_volume.sql',
   'migrations/0007_voice_activity_sensitivity.sql',
   'migrations/0008_heart_brain_voice_lock.sql',
+  'migrations/0009_emotion_presets.sql',
 ];
 try {
   for (const file of migrations) db.exec(readFileSync(file, 'utf8'));
