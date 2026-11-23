@@ -48,3 +48,18 @@ The companion is an optional local Node.js process. It binds to loopback only, c
 
 ### Pakistani Urdu neural female voice
 ZARA uses one fixed Microsoft Edge neural speaker, `ur-PK-UzmaNeural`, for Urdu, Roman Urdu and English. Character, mood, language and device settings do not switch the speaker. The local Node server and Cloudflare Worker use the same Sec-MS-GEC v2 Read Aloud handshake. Browser SpeechSynthesis and the old Google Translate TTS fallback are disabled so a provider failure never silently changes the voice. If synthesis is temporarily unavailable, the written reply remains visible and ZARA retries the same fixed voice once. The app unlocks Web Audio on the first user gesture so delayed TTS responses can play under browser autoplay policies.
+
+
+## Cloudflare production deployment
+
+The production Worker is named `nova-ai` (not `novaai` or `zaraai`) and is bound to the existing `nova-ai-production` D1 database. Deploys run from GitHub Actions after changes reach `main`; pull requests run validation only.
+
+Add these GitHub Actions repository secrets before enabling production deployment:
+
+- `CLOUDFLARE_API_TOKEN`: Cloudflare API token with Workers Scripts edit and D1 read permissions.
+- `CLOUDFLARE_ACCOUNT_ID`: Cloudflare account ID.
+- `OPENAI_API_KEY`: OpenAI API key for natural OpenAI TTS.
+
+The deployment workflow uploads `OPENAI_API_KEY` as a Worker secret before publishing. Never put API keys in `wrangler.toml`, source code, or client-side settings.
+
+OpenAI speech uses `gpt-4o-mini-tts` with `marin` for female personas and `cedar` for male personas. OpenAI currently recommends these voices for quality, but its TTS voices are optimized for English; Pakistani Urdu pronunciation may vary. The model is scheduled for shutdown on January 6, 2027, so the TTS provider must be migrated before that date.
