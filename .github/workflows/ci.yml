@@ -1,7 +1,7 @@
 name: Validate ZARA AI
 on:
   push:
-    branches: [main, 'feat/**']
+    branches: [main, 'feat/**', 'fix/**']
   pull_request:
     branches: [main]
 permissions:
@@ -14,7 +14,7 @@ jobs:
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: latest
-      - run: bun install --frozen-lockfile
+      - run: bun install
       - run: bun run db:check
       - run: bun run lint
       - run: bun run test
